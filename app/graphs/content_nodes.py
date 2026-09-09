@@ -1,6 +1,7 @@
 from app.core.llm import llm
 from app.graphs.content_state import ContentState
 from app.models.content import ContentIdeas
+from app.services.content_service import save_ideas
 
 structured_llm = llm.with_structured_output(ContentIdeas)
 
@@ -75,4 +76,17 @@ def quality_check(state: ContentState) -> ContentState:
     return {
         **state,
         "ideas": valid_ideas,
+    }
+
+# this saves the ideas to database
+def save_ideas_node(state: ContentState) -> ContentState:
+
+    ids = save_ideas(
+        topic=state["topic"],
+        ideas=state["ideas"],
+    )
+
+    return {
+        **state,
+        "saved_ids": ids,
     }

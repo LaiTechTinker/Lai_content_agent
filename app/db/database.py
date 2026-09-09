@@ -21,3 +21,16 @@ def init_db():
 """)
     connection.commit()
     connection.close()
+
+# this code block saved ideas to the database
+
+def save_content_ideas(topic:str,platform:str,angle:str,title:str):
+    connection = get_connection()
+    cursor=connection.execute("""
+    INSERT INTO content_ideas(topic,platform,angle,title)
+    VALUES(?,?,?,?)
+    """,(topic,platform,angle,title))
+    connection.commit()
+    idea_id=cursor.lastrowid
+    connection.close()
+    return idea_id
