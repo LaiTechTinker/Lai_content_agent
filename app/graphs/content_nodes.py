@@ -1,11 +1,14 @@
 from app.core.llm import llm
 from app.graphs.content_state import ContentState
+from app.models.content import ContentIdeas
 
+structured_llm = llm.with_structured_output(ContentIdeas)
 
 def generate_content_ideas(state: ContentState) -> ContentState:
 
     topic = state["topic"]
     platform = state["platform"]
+    content_type = state["content_type"]
 
     prompt = f"""
 You are a content strategist helping me grow my personal brand.
@@ -18,6 +21,9 @@ Topic:
 Platform:
 {platform}
 
+content_type:
+{content_type}
+
 My content focuses on:
 - AI engineering
 - AI agents
@@ -28,19 +34,19 @@ My content focuses on:
 - AI industry developments
 
 For each idea provide:
-1. A compelling title
-2. The core angle
-3. Why someone would care
+- A compelling title
+- A specific angle
+- Why the idea is valuable
 
-Avoid generic ideas such as:
-"10 AI trends you need to know."
+Avoid generic content.
 
-Make the ideas specific and useful.
+The ideas should sound like something a technical
+AI engineer could genuinely post about.
 """
 
-    response = llm.invoke(prompt)
+    result = structured_llm.invoke(prompt)
 
     return {
         **state,
-        "ideas": [response.content],
+        "ideas": result.ideas,
     }
