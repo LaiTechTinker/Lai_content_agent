@@ -1,8 +1,8 @@
 from pydantic import BaseModel
-from typing import TypeDict
+from typing import TypedDict
 
 
-class ContentState(TypeDict):
+class ContentState(TypedDict):
     topic: str
     platform: str
     ideas: list[str]
