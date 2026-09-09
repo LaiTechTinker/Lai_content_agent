@@ -50,3 +50,29 @@ AI engineer could genuinely post about.
         **state,
         "ideas": result.ideas,
     }
+
+# let's add a placeholder function that validates my ideas
+
+def quality_check(state: ContentState) -> ContentState:
+
+    ideas = state["ideas"]
+
+    valid_ideas = []
+
+    for idea in ideas:
+
+        if not idea.title.strip():
+            continue
+
+        if not idea.angle.strip():
+            continue
+
+        if not idea.reason.strip():
+            continue
+
+        valid_ideas.append(idea)
+
+    return {
+        **state,
+        "ideas": valid_ideas,
+    }

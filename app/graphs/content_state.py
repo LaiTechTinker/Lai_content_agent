@@ -5,4 +5,5 @@ from typing import TypedDict
 class ContentState(TypedDict):
     topic: str
     platform: str
+    content_type:str
     ideas: list[str]
