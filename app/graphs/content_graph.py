@@ -1,8 +1,12 @@
+from langgraph import graph
 from langgraph.graph import END,START,StateGraph
 from app.graphs.content_nodes import (generate_content_ideas,
                                       quality_check,save_ideas_node,
                                       retrieve_personal_knowledge,decide_research,research_topic,
-                                      research_router,generate_research_query)
+                                      research_router,generate_research_query,generate_content_node,
+    evaluate_content_node,
+    refine_content_node,
+    content_quality_router,)
                                       
 from app.graphs.content_state import ContentState
 
@@ -33,6 +37,20 @@ def build_content_graph():
     graph.add_node("generate_content_ideas",generate_content_ideas)
     graph.add_node("quality_check",quality_check)
     graph.add_node("save_ideas_node",save_ideas_node)
+    graph.add_node(
+    "generate_content",
+    generate_content_node,
+)
+
+    graph.add_node(
+    "evaluate_content",
+    evaluate_content_node,
+)
+
+    graph.add_node(
+    "refine_content",
+    refine_content_node,
+)
    
     graph.add_edge(
         START,
@@ -61,6 +79,28 @@ def build_content_graph():
     # graph.add_edge("retrieve_personal_knowledge","generate_content_ideas")
     graph.add_edge("generate_content_ideas","quality_check")
     graph.add_edge("quality_check","save_ideas_node")
-    graph.add_edge("save_ideas_node",END)
+    graph.add_edge(
+    "save_ideas",
+    "generate_content",
+)
+
+    graph.add_edge(
+    "generate_content",
+    "evaluate_content",
+) 
+    graph.add_conditional_edges(
+    "evaluate_content",
+    content_quality_router,
+    {
+        "refine": "refine_content",
+        "approved": END,
+    },
+)
+
+    graph.add_edge(
+    "refine_content",
+    "evaluate_content",
+)
+   
     return graph.compile()
 

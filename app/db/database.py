@@ -41,6 +41,17 @@ def init_db():
                 REFERENCES documents(id)
         )
     """)
+    connection.execute("""
+    CREATE TABLE IF NOT EXISTS generated_content (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    idea_id INTEGER,
+    platform TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    content TEXT NOT NULL,
+    quality_score INTEGER,
+    status TEXT DEFAULT 'draft',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);""")
     connection.commit()
     connection.close()
 

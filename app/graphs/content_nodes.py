@@ -5,9 +5,10 @@ from app.services.content_service import save_ideas
 from app.services.retrieval_service import (
     retrieve_relevant_chunks,
 )
-from app.services.content_generation_service import generate_content
+from app.services.content_generation_service import (generate_content,evaluate_content)
 from app.tools.web_search import web_search
 structured_llm = llm.with_structured_output(ContentIdeas)
+
 
 def generate_content_ideas(state: ContentState) -> ContentState:
 
@@ -256,7 +257,7 @@ Return only the search query.
         "research_query": research_query,
     }
 
-def generate_content_node(state):
+def generate_content_node(state:ContentState) :
     ideas = state.get("ideas", [])
 
     if not ideas:
@@ -277,3 +278,61 @@ def generate_content_node(state):
         "generated_content": content,
         "refinement_count": 0,
     }
+
+
+
+
+
+def evaluate_content_node(state:ContentState):
+    evaluation = evaluate_content(
+        content=state["generated_content"],
+        platform=state["platform"],
+        content_type=state["content_type"],
+    )
+
+    return {
+        "quality_score": evaluation.score,
+        "quality_feedback": evaluation.feedback,
+    }
+
+def refine_content_node(state:ContentState):
+    idea = state["selected_idea"]
+
+    personal_context = state.get("retrieved_context", [])
+    research_results = state.get("research_results", [])
+
+    feedback = state.get("quality_feedback", "")
+
+    improved_content = generate_content(
+        idea={
+            **idea,
+            "angle": (
+                f"{idea.get('angle', '')}\n\n"
+                f"Previous evaluator feedback:\n{feedback}"
+            ),
+        },
+        platform=state["platform"],
+        content_type=state["content_type"],
+        personal_context=personal_context,
+        research_results=research_results,
+    )
+
+    return {
+        "generated_content": improved_content,
+        "refinement_count": state.get("refinement_count", 0) + 1,
+    }
+
+# this code block is for the routing logic of the regeration base on the score returned
+
+def content_quality_router(state):
+
+    score = state.get("quality_score", 0)
+    refinement_count = state.get("refinement_count", 0)
+
+    if score >= 8:
+        return "approved"
+
+    if refinement_count >= 2:
+        return "approved"
+
+    return "refine"
