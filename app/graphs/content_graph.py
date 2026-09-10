@@ -6,7 +6,7 @@ from app.graphs.content_nodes import (generate_content_ideas,
                                       research_router,generate_research_query,generate_content_node,
     evaluate_content_node,
     refine_content_node,
-    content_quality_router,)
+    content_quality_router,save_generated_content_node)
                                       
 from app.graphs.content_state import ContentState
 
@@ -51,6 +51,10 @@ def build_content_graph():
     "refine_content",
     refine_content_node,
 )
+    graph.add_node(
+    "save_generated_content",
+    save_generated_content_node,
+)
    
     graph.add_edge(
         START,
@@ -80,7 +84,7 @@ def build_content_graph():
     graph.add_edge("generate_content_ideas","quality_check")
     graph.add_edge("quality_check","save_ideas_node")
     graph.add_edge(
-    "save_ideas",
+    "save_ideas_node",
     "generate_content",
 )
 
@@ -93,13 +97,19 @@ def build_content_graph():
     content_quality_router,
     {
         "refine": "refine_content",
-        "approved": END,
+        "approved": "save_generated_content",
     },
 )
 
     graph.add_edge(
     "refine_content",
     "evaluate_content",
+)
+    
+
+    graph.add_edge(
+    "save_generated_content",
+    END,
 )
    
     return graph.compile()

@@ -6,6 +6,7 @@ from app.services.retrieval_service import (
     retrieve_relevant_chunks,
 )
 from app.services.content_generation_service import (generate_content,evaluate_content)
+from app.services.generated_content_service import save_generated_content
 from app.tools.web_search import web_search
 structured_llm = llm.with_structured_output(ContentIdeas)
 
@@ -264,9 +265,10 @@ def generate_content_node(state:ContentState) :
         raise ValueError("No content ideas available.")
 
     selected_idea = ideas[0]
+    idea_data = selected_idea.model_dump()
 
     content = generate_content(
-        idea=selected_idea,
+        idea=idea_data,
         platform=state["platform"],
         content_type=state["content_type"],
         personal_context=state.get("retrieved_context", []),
@@ -297,6 +299,7 @@ def evaluate_content_node(state:ContentState):
 
 def refine_content_node(state:ContentState):
     idea = state["selected_idea"]
+    idea_data = idea.model_dump() if hasattr(idea, "model_dump") else idea
 
     personal_context = state.get("retrieved_context", [])
     research_results = state.get("research_results", [])
@@ -305,9 +308,9 @@ def refine_content_node(state:ContentState):
 
     improved_content = generate_content(
         idea={
-            **idea,
+            **idea_data,
             "angle": (
-                f"{idea.get('angle', '')}\n\n"
+                f"{idea_data.get('angle', '')}\n\n"
                 f"Previous evaluator feedback:\n{feedback}"
             ),
         },
@@ -336,3 +339,27 @@ def content_quality_router(state):
         return "approved"
 
     return "refine"
+
+
+# this node handles content generation saving node
+
+
+
+
+def save_generated_content_node(state:ContentState):
+
+    idea = state["selected_idea"]
+    idea_data = idea.model_dump() if hasattr(idea, "model_dump") else idea
+
+    content_id = save_generated_content(
+        idea_id=idea_data.get("id"),
+        platform=state["platform"],
+        content_type=state["content_type"],
+        content=state["generated_content"],
+        quality_score=state.get("quality_score", 0),
+    )
+
+    return {
+        "final_content": state["generated_content"],
+        "content_id": content_id,
+    }

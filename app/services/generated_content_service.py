@@ -1,4 +1,5 @@
 from app.db.database import get_connection
+from datetime import datetime
 
 
 def save_generated_content(
@@ -40,3 +41,31 @@ def save_generated_content(
     conn.close()
 
     return content_id
+
+def update_content_after_review(
+    content_id: int,
+    content: str,
+):
+    conn = get_connection()
+
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        UPDATE generated_content
+        SET
+            content = ?,
+            status = ?,
+            approved_at = ?
+        WHERE id = ?
+        """,
+        (
+            content,
+            "approved",
+            datetime.utcnow().isoformat(),
+            content_id,
+        ),
+    )
+
+    conn.commit()
+    conn.close()

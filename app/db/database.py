@@ -50,7 +50,10 @@ def init_db():
     content TEXT NOT NULL,
     quality_score INTEGER,
     status TEXT DEFAULT 'draft',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    ALTER TABLE generated_content
+    ADD COLUMN approved_at TIMESTAMP;
+
 );""")
     connection.commit()
     connection.close()

@@ -22,7 +22,11 @@ class ContentState(TypedDict):
     refinement_count: int
 
     final_content: str
-
+    content_id: int
+    human_action: str
+    human_feedback: str
+    edited_content: str
+    approval_status: str
 
 
 

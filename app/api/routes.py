@@ -27,6 +27,33 @@ class  getIdeaResponse(BaseModel):
     angle:str
     platform:str
     created_at:str
+# class  getGeneratedContentResponse(BaseModel):
+#     id:int
+#     idea_id:int
+#     platform:str
+#     content_type:str
+#     content:str
+#     quality_score:int
+#     refinement_count:int
+#     created_at:str
+
+@router.post("/content/generate")
+def generate_content(request:IdeaRequest):
+    result=graph.invoke({
+        "topic":request.topic,
+        "platform":request.platform,
+        "content_type":request.content_type
+    })
+    return {
+    "content_id": result.get("content_id"),
+    "idea": result.get("selected_idea"),
+    "platform": result.get("platform"),
+    "content_type": result.get("content_type"),
+    "content": result.get("final_content"),
+    "quality_score": result.get("quality_score"),
+    "refinement_count": result.get("refinement_count"),
+}
+
 
 @router.post("/ideas")
 def generate_ideas(request:IdeaRequest):
