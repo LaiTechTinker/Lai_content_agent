@@ -1,4 +1,4 @@
-from app.db.database import save_content_idea
+from app.db.database import save_content_ideas
 
 
 def save_ideas(topic: str, ideas: list):
@@ -7,7 +7,7 @@ def save_ideas(topic: str, ideas: list):
 
     for idea in ideas:
 
-        idea_id = save_content_idea(
+        idea_id = save_content_ideas(
             topic=topic,
             title=idea.title,
             angle=idea.angle,
@@ -17,3 +17,4 @@ def save_ideas(topic: str, ideas: list):
         saved_ids.append(idea_id)
 
     return saved_ids
+

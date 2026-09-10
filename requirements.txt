@@ -6,3 +6,6 @@ langgraph
 pydantic
 python-dotenv
 ipykernel
+pypdf
+langchain-text-splitters
+langchain-google-genai

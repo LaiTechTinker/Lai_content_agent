@@ -10,14 +10,14 @@ from app.api.routes import router
 async def lifespan(app: FastAPI):
     print("Starting up application...")
 
-    await init_db()
+    init_db()
    
     print("Application startup complete!")
     yield
     print("Shutting down application...")
     print("Shutdown complete")
 
-app=FastAPI(title="Lai_agent", description="my personal content agent", version="1.0.0" )
+app=FastAPI(title="Lai_agent", description="my personal content agent", version="1.0.0",lifespan=lifespan )
 
 app.include_router(router, prefix="/api")
 app.get("/health")
