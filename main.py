@@ -3,7 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 from app.db.database import init_db
 from contextlib import asynccontextmanager
-from app.api.routes import router
+from app.api.routes import router as router1
+from app.api.content_review import router as router2
 
 
 @asynccontextmanager
@@ -19,7 +20,9 @@ async def lifespan(app: FastAPI):
 
 app=FastAPI(title="Lai_agent", description="my personal content agent", version="1.0.0",lifespan=lifespan )
 
-app.include_router(router, prefix="/api")
+app.include_router(router1, prefix="/api")
+app.include_router(router2, prefix="/api")
+
 app.get("/health")
 def health_check():
     return {"status": "ok","message": "Lai_agent is running"}

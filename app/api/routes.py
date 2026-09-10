@@ -11,6 +11,17 @@ from app.db.database import list_knowledge
 
 # this initialize our router
 router=APIRouter()
+config = {
+    "configurable": {
+        "thread_id": "content-123"
+    }
+}
+router=APIRouter()
+config = {
+    "configurable": {
+        "thread_id": "content-123"
+    }
+}
 # this inititialize our graph
 graph=build_content_graph()
 
@@ -43,7 +54,7 @@ def generate_content(request:IdeaRequest):
         "topic":request.topic,
         "platform":request.platform,
         "content_type":request.content_type
-    })
+    },config=config)
     return {
     "content_id": result.get("content_id"),
     "idea": result.get("selected_idea"),

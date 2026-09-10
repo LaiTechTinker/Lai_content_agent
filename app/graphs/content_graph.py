@@ -7,6 +7,13 @@ from app.graphs.content_nodes import (generate_content_ideas,
     evaluate_content_node,
     refine_content_node,
     content_quality_router,save_generated_content_node)
+
+from app.graphs.human_reveiw import (
+    human_review_node,
+    finalize_human_review_node,
+    save_approval_node,
+)
+from app.db.checkpointer import checkpointer
                                       
 from app.graphs.content_state import ContentState
 
@@ -55,7 +62,20 @@ def build_content_graph():
     "save_generated_content",
     save_generated_content_node,
 )
-   
+    graph.add_node(
+    "human_review",
+    human_review_node,
+)
+
+    graph.add_node(
+    "finalize_human_review",
+    finalize_human_review_node,
+)
+
+    graph.add_node(
+    "save_approval",
+    save_approval_node,
+)
     graph.add_edge(
         START,
         "retrieve_personal_knowledge"
@@ -105,12 +125,26 @@ def build_content_graph():
     "refine_content",
     "evaluate_content",
 )
-    
-
     graph.add_edge(
     "save_generated_content",
+    "human_review",
+)
+
+    graph.add_edge(
+    "human_review",
+    "finalize_human_review",
+)
+    graph.add_edge(
+    "finalize_human_review",
+    "save_approval",
+)
+
+    graph.add_edge(
+    "save_approval",
     END,
 )
+
+  
    
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)
 
