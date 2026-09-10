@@ -5,6 +5,7 @@ from app.services.content_service import save_ideas
 from app.services.retrieval_service import (
     retrieve_relevant_chunks,
 )
+from app.services.content_generation_service import generate_content
 from app.tools.web_search import web_search
 structured_llm = llm.with_structured_output(ContentIdeas)
 
@@ -253,4 +254,26 @@ Return only the search query.
     return {
         **state,
         "research_query": research_query,
+    }
+
+def generate_content_node(state):
+    ideas = state.get("ideas", [])
+
+    if not ideas:
+        raise ValueError("No content ideas available.")
+
+    selected_idea = ideas[0]
+
+    content = generate_content(
+        idea=selected_idea,
+        platform=state["platform"],
+        content_type=state["content_type"],
+        personal_context=state.get("retrieved_context", []),
+        research_results=state.get("research_results", []),
+    )
+
+    return {
+        "selected_idea": selected_idea,
+        "generated_content": content,
+        "refinement_count": 0,
     }

@@ -1,6 +1,7 @@
 from app.core.llm import llm
 from app.models.content import GeneratedContent
 
+from app.models.content import ContentEvaluation
 
 structured_llm = llm.with_structured_output(GeneratedContent)
 
@@ -80,3 +81,52 @@ Return only the final post content.
     result = structured_llm.invoke(prompt)
 
     return result.content
+
+
+# this code block serves as the content evaluation node for the generated post script
+
+
+
+evaluation_llm = llm.with_structured_output(ContentEvaluation)
+
+
+def evaluate_content(
+    content: str,
+    platform: str,
+    content_type: str,
+) -> ContentEvaluation:
+
+    prompt = f"""
+Evaluate this social media post.
+
+PLATFORM:
+{platform}
+
+CONTENT TYPE:
+{content_type}
+
+POST:
+{content}
+
+Evaluate the post on:
+
+- clarity
+- usefulness
+- originality
+- hook
+- platform suitability
+- human-sounding writing
+- factual reliability
+
+Give a score from 1 to 10.
+
+If the post has meaningful weaknesses,
+set should_refine to true.
+
+If the post is strong enough to publish,
+set should_refine to false.
+
+Be strict.
+"""
+
+    return evaluation_llm.invoke(prompt)
