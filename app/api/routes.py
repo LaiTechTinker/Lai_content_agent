@@ -36,11 +36,19 @@ def generate_ideas(request:IdeaRequest):
         "content_type":request.content_type,
         "ideas":[]
     })
-    return  {
-        "topic": request.topic,
-        "platform": request.platform,
-        "ideas": result["ideas"]
-    }
+    return {
+    "topic": request.topic,
+    "platform": request.platform,
+    "content_type": request.content_type,
+    "research_required": result[
+        "research_required"
+    ],
+    "research_results": result.get(
+        "research_results",
+        []
+    ),
+    "ideas": result["ideas"],
+}
 
 @router.post("/knowledge/upload")
 async def upload_knowledge(

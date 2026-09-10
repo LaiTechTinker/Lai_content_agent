@@ -1,6 +1,8 @@
 from langgraph.graph import END,START,StateGraph
 from app.graphs.content_nodes import (generate_content_ideas,
-                                      quality_check,save_ideas_node,retrieve_personal_knowledge)
+                                      quality_check,save_ideas_node,
+                                      retrieve_personal_knowledge,decide_research,research_topic,
+                                      research_router,generate_research_query)
                                       
 from app.graphs.content_state import ContentState
 
@@ -15,15 +17,48 @@ def build_content_graph():
         "retrieve_personal_knowledge",
         retrieve_personal_knowledge
     )
+    graph.add_node(
+        "decide_research",
+        decide_research
+    )
+    graph.add_node(
+        "generate_research_query",
+        generate_research_query
+    )
+
+    graph.add_node(
+        "research",
+        research_topic
+    )
     graph.add_node("generate_content_ideas",generate_content_ideas)
     graph.add_node("quality_check",quality_check)
     graph.add_node("save_ideas_node",save_ideas_node)
-    graph.add_node()
+   
     graph.add_edge(
         START,
         "retrieve_personal_knowledge"
     )
-    graph.add_edge("retrieve_personal_knowledge","generate_content_ideas")
+    graph.add_edge(
+        "retrieve_personal_knowledge",
+        "decide_research"
+    )
+    graph.add_conditional_edges(
+        "decide_research", #this represent the node that will decide the next step based on the research_required flag
+        research_router,
+        {
+            "research": "generate_research_query",
+            "generate": "generate_content_ideas",
+        },
+    )
+    graph.add_edge(
+        "generate_research_query",
+        "research"
+    )
+    graph.add_edge(
+        "research",
+        "generate_content_ideas"
+    )
+    # graph.add_edge("retrieve_personal_knowledge","generate_content_ideas")
     graph.add_edge("generate_content_ideas","quality_check")
     graph.add_edge("quality_check","save_ideas_node")
     graph.add_edge("save_ideas_node",END)
