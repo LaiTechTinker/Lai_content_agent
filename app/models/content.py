@@ -35,3 +35,14 @@ class ContentIdea(BaseModel):
 
 class ContentIdeas(BaseModel):
     ideas: list[ContentIdea]
+
+
+
+class GeneratedContent(BaseModel):
+    content: str
+
+
+class ContentEvaluation(BaseModel):
+    score: int = Field(ge=1, le=10)
+    feedback: str
+    should_refine: bool

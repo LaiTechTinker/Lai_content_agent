@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import TypedDict
 
 
@@ -22,3 +22,7 @@ class ContentState(TypedDict):
     refinement_count: int
 
     final_content: str
+
+
+
+
