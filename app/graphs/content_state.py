@@ -8,3 +8,4 @@ class ContentState(TypedDict):
     content_type:str
     saved_ids:list
     ideas: list[str]
+    retrieved_context: list

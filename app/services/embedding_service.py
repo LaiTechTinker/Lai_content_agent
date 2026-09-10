@@ -8,7 +8,7 @@ load_dotenv()
 
 
 embeddings = GoogleGenerativeAIEmbeddings(
-    model="YOUR_EMBEDDING_MODEL"
+    model="gemini-embedding-2"
 )
 
 

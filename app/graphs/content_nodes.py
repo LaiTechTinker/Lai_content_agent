@@ -2,6 +2,9 @@ from app.core.llm import llm
 from app.graphs.content_state import ContentState
 from app.models.content import ContentIdeas
 from app.services.content_service import save_ideas
+from app.services.retrieval_service import (
+    retrieve_relevant_chunks,
+)
 
 structured_llm = llm.with_structured_output(ContentIdeas)
 
@@ -10,9 +13,31 @@ def generate_content_ideas(state: ContentState) -> ContentState:
     topic = state["topic"]
     platform = state["platform"]
     content_type = state["content_type"]
-
+    context = state.get(
+        "retrieved_context",
+        []
+    )
+    context_text = "\n\n".join(
+        result["text"]
+        for result in context
+    )
     prompt = f"""
 You are a content strategist helping me grow my personal brand.
+
+Here is information from my personal
+knowledge base:
+
+--- PERSONAL KNOWLEDGE ---
+{context_text}
+--- END PERSONAL KNOWLEDGE ---
+
+Use my personal knowledge when relevant.
+
+Do NOT invent personal experiences.
+
+If the personal knowledge is not relevant,
+simply create ideas based on the topic.
+
 
 Generate 5 strong content ideas.
 
@@ -89,4 +114,20 @@ def save_ideas_node(state: ContentState) -> ContentState:
     return {
         **state,
         "saved_ids": ids,
+    }
+
+def retrieve_personal_knowledge(
+    state: ContentState
+) -> ContentState:
+
+    topic = state["topic"]
+
+    results = retrieve_relevant_chunks(
+        query=topic,
+        top_k=5,
+    )
+
+    return {
+        **state,
+        "retrieved_context": results,
     }

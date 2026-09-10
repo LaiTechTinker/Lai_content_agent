@@ -104,6 +104,30 @@ def save_document_chunk(
     connection.commit()
     connection.close()
 
+def list_knowledge():
+
+    connection = get_connection()
+
+    rows = connection.execute("""
+        SELECT
+            id,
+            filename,
+            file_type,
+            created_at
+        FROM documents
+        ORDER BY created_at DESC
+    """).fetchall()
+
+    connection.close()
+
+    return {
+        "documents": [
+            dict(row)
+            for row in rows
+        ]
+    }
+
+
 # async def get_idea_by_id(idea_id:int):
 #     connection=get_connection()
 #     cursor=connection.execute("""
