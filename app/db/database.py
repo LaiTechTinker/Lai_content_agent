@@ -1,4 +1,5 @@
 import sqlite3
+import json
 db_path="content.db"
 
 def get_connection(db_path=db_path):
@@ -56,6 +57,52 @@ def save_content_ideas(topic:str,platform:str,angle:str,title:str):
     idea_id=cursor.lastrowid
     connection.close()
     return idea_id
+# this inserts the uploaded document into the database and returns the document id
+def create_document(
+    filename: str,
+    file_type: str,
+):
+    connection = get_connection()
+
+    cursor = connection.execute(
+        """
+        INSERT INTO documents
+        (filename, file_type)
+        VALUES (?, ?)
+        """,
+        (filename, file_type)
+    )
+
+    connection.commit()
+
+    document_id = cursor.lastrowid
+
+    connection.close()
+
+    return document_id
+
+def save_document_chunk(
+    document_id: int,
+    chunk_text: str,
+    embedding: list[float],
+):
+    connection = get_connection()
+
+    connection.execute(
+        """
+        INSERT INTO document_chunks
+        (document_id, chunk_text, embedding)
+        VALUES (?, ?, ?)
+        """,
+        (
+            document_id,
+            chunk_text,
+            json.dumps(embedding),
+        )
+    )
+
+    connection.commit()
+    connection.close()
 
 # async def get_idea_by_id(idea_id:int):
 #     connection=get_connection()
