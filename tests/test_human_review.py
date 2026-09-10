@@ -6,10 +6,10 @@ from app.graphs.content_graph import graph
 def test_human_review():
 
     config = {
-        "configurable": {
-            "thread_id": "test-content-001"
-        }
+    "configurable": {
+        "thread_id": "content-123"
     }
+}
 
     result = graph.invoke(
         {
