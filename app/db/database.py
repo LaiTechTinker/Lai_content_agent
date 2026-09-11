@@ -55,6 +55,15 @@ def init_db():
     ADD COLUMN approved_at TIMESTAMP;
 
 );""")
+    connection.execute("""CREATE TABLE IF NOT EXISTS content_media (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    content_id INTEGER NOT NULL,
+    media_type TEXT NOT NULL,
+    media_url TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (content_id)
+        REFERENCES generated_content(id)
+);""")
     connection.commit()
     connection.close()
 

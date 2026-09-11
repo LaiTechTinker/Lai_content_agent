@@ -13,3 +13,4 @@ tavily-python
 python-multipart
 langgraph-checkpoint-sqlite
 pytest
+pillow

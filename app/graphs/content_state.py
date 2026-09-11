@@ -27,6 +27,9 @@ class ContentState(TypedDict):
     human_feedback: str
     edited_content: str
     approval_status: str
-
-
+    media_requested: bool
+    image_requested: bool
+    audio_requested: bool
+    image_url: str
+    audio_url: str
 
