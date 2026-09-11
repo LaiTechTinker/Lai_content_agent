@@ -5,6 +5,7 @@ from app.db.database import init_db
 from contextlib import asynccontextmanager
 from app.api.routes import router as router1
 from app.api.content_review import router as router2
+from app.api.publish import router as router3
 
 
 @asynccontextmanager
@@ -22,6 +23,7 @@ app=FastAPI(title="Lai_agent", description="my personal content agent", version=
 
 app.include_router(router1, prefix="/api")
 app.include_router(router2, prefix="/api")
+app.include_router(router3, prefix="/api")
 
 app.get("/health")
 def health_check():

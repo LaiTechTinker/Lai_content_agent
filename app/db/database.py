@@ -64,6 +64,19 @@ def init_db():
     FOREIGN KEY (content_id)
         REFERENCES generated_content(id)
 );""")
+    connection.execute("""
+    CREATE TABLE IF NOT EXISTS social_accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    platform TEXT NOT NULL UNIQUE,
+    account_id TEXT,
+    account_name TEXT,
+    access_token TEXT NOT NULL,
+    refresh_token TEXT,
+    token_expires_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+    """)
     connection.commit()
     connection.close()
 

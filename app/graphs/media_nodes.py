@@ -97,3 +97,8 @@ def audio_router(state):
         return "generate_audio"
 
     return "skip_audio"
+
+def image_skipped_node(state):
+    return {}
+def audio_skipped_node(state):
+    return {}

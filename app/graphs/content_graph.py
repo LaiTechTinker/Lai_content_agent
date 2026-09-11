@@ -13,6 +13,14 @@ from app.graphs.human_reveiw import (
     finalize_human_review_node,
     save_approval_node,
 )
+from app.graphs.media_nodes import (
+    generate_image_node,
+    generate_audio_node,
+    image_router,
+    audio_router,
+    image_skipped_node,
+    audio_skipped_node
+)
 from app.db.checkpointer import checkpointer
                                       
 from app.graphs.content_state import ContentState
@@ -76,6 +84,23 @@ def build_content_graph():
     "save_approval",
     save_approval_node,
 )
+    graph.add_node(
+    "generate_image",
+    generate_image_node,
+)
+
+    graph.add_node(
+    "generate_audio",
+    generate_audio_node,
+)
+    graph.add_node(
+    "image_skipped",
+    image_skipped_node,
+)
+    graph.add_node(
+    "audio_skipped",
+    audio_skipped_node,
+)
     graph.add_edge(
         START,
         "retrieve_personal_knowledge"
@@ -138,9 +163,39 @@ def build_content_graph():
     "finalize_human_review",
     "save_approval",
 )
+    graph.add_conditional_edges(
+    "save_approval",
+    image_router,
+    {
+        "generate_image": "generate_image",
+        "skip_image": "image_skipped",
+    },
+)
+    # graph.add_edge("image_skipped",image_router)
+    graph.add_conditional_edges(
+    "generate_image",
+    audio_router,
+    {
+        "generate_audio": "generate_audio",
+        "skip_audio": "audio_skipped",
+    },
+)
+    graph.add_edge(
+    "audio_skipped",
+    END,
+)
 
     graph.add_edge(
-    "save_approval",
+    "generate_audio",
+    END,
+)
+
+    graph.add_edge(
+    "image_skipped",
+    "image_decision_after_skip",
+)
+    graph.add_edge(
+    "image_decison_after_skip",
     END,
 )
 

@@ -69,3 +69,38 @@ def update_content_after_review(
 
     conn.commit()
     conn.close()
+
+
+
+
+def get_content(content_id: int):
+    connection=get_connection()
+
+    row = connection.execute(
+        """
+        SELECT
+            id,
+            idea_id,
+            platform,
+            content_type,
+            content,
+            quality_score,
+            status,
+            approved_at,
+            published_at,
+            publish_status,
+            external_post_id,
+            publish_error,
+            created_at
+        FROM generated_content
+        WHERE id = ?
+        """,
+        (content_id,),
+    ).fetchone()
+
+    connection.close()
+
+    if row is None:
+        return None
+
+    return dict(row)
