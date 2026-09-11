@@ -1,10 +1,7 @@
 import os
 from pathlib import Path
-
-from dotenv import load_dotenv
-
-load_dotenv()
-
+from app.tools.image_generate import generate_image_with_nano
+model_name=""
 
 def generate_image(prompt: str) -> str:
     """
@@ -12,7 +9,11 @@ def generate_image(prompt: str) -> str:
 
     The actual provider implementation will live here.
     """
+    try:
+      image_path=generate_image_with_nano(prompt=prompt,model_name=model_name)
+      return image_path
 
-    raise NotImplementedError(
-        "Connect your selected image-generation provider here."
-    )
+    except Exception as e:
+       return f"Error occured:{str(e)}"
+
+  
