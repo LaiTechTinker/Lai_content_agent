@@ -18,6 +18,19 @@ def test_human_review():
     print("FIRST RESULT:")
     print(result)
 
+    selected = graph.invoke(
+        Command(
+            resume={
+                "action": "select_idea",
+                "selected_idea_id": result["saved_ids"][0],
+            }
+        ),
+        config=config,
+    )
+
+    print("SELECTED IDEA RESULT:")
+    print(selected)
+
     resumed = graph.invoke(
         Command(
             resume={

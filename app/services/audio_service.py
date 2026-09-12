@@ -6,10 +6,10 @@ MODEL_NAME = os.getenv("AUDIO_MODEL", "")
 
 
 def generate_audio(text: str) -> str:
-    """Convert text into speech and return the output path or a placeholder."""
+    """Convert text into speech and return the output path."""
     if not MODEL_NAME:
-        return "audio_not_configured"
-    try:
-        return generate_audio_file(text=text, model_name=MODEL_NAME)
-    except Exception as e:
-        return f"error occured:{str(e)}"
+        raise RuntimeError("Audio generation model is not configured.")
+    audio_path = generate_audio_file(text=text, model_name=MODEL_NAME)
+    if not audio_path:
+        raise RuntimeError("Audio provider returned no file.")
+    return audio_path

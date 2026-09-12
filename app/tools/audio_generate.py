@@ -29,7 +29,7 @@ def generate_audio(text:str,model_name:str):
     }
 )
     audio_path=f"{str(uuid4())}.wav"
-    audio=wave_file(audio_path, base64.b64decode(interaction.output_audio.data))
-    return audio
+    wave_file(audio_path, base64.b64decode(interaction.output_audio.data))
+    return audio_path
 
 

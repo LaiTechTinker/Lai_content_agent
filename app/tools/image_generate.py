@@ -39,13 +39,14 @@ def generate_with_cloud(prompt:str):
     timeout=120,
 )
     image_path=f"{uuid1()}.jpg"
-    if response.ok:
-     
-     with open(image_path, "wb") as file:
+    if not response.ok:
+        raise RuntimeError(
+            f"Image provider failed: {response.status_code} {response.text}"
+        )
+
+    with open(image_path, "wb") as file:
         file.write(response.content)
 
-    print("Image generated successfully!")
-    print("Saved as: generated_image.jpg")
     return image_path
  except Exception as e:
   return f"Error occured:{str(e)}" 

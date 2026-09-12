@@ -8,7 +8,17 @@ from app.services.retrieval_service import (
 from app.services.content_generation_service import (generate_content,evaluate_content)
 from app.services.generated_content_service import save_generated_content
 from app.tools.web_search import web_search
+from langgraph.types import interrupt
 structured_llm = llm.with_structured_output(ContentIdeas)
+
+
+def initialize_request(state: ContentState) -> ContentState:
+    return {
+        **state,
+        "original_prompt": state.get("original_prompt", state["topic"]),
+        "workflow_stage": "initializing",
+        "refinement_count": 0,
+    }
 
 
 def generate_content_ideas(state: ContentState) -> ContentState:
@@ -99,11 +109,12 @@ WEB RESEARCH RULES:
     return {
         **state,
         "ideas": result.ideas,
+        "workflow_stage": "generating_ideas",
     }
 
 # let's add a placeholder function that validates my ideas
 
-def quality_check(state: ContentState) -> ContentState:
+def validate_ideas(state: ContentState) -> ContentState:
 
     ideas = state["ideas"]
 
@@ -125,7 +136,11 @@ def quality_check(state: ContentState) -> ContentState:
     return {
         **state,
         "ideas": valid_ideas,
+        "workflow_stage": "validating_ideas",
     }
+
+
+quality_check = validate_ideas
 
 # this saves the ideas to database
 def save_ideas_node(state: ContentState) -> ContentState:
@@ -138,6 +153,33 @@ def save_ideas_node(state: ContentState) -> ContentState:
     return {
         **state,
         "saved_ids": ids,
+        "workflow_stage": "waiting_for_idea_selection",
+    }
+
+
+def human_select_idea_node(state: ContentState) -> ContentState:
+    ideas = state.get("ideas", [])
+    saved_ids = state.get("saved_ids", [])
+    available_ideas = [
+        {"id": idea_id, **idea.model_dump()}
+        for idea_id, idea in zip(saved_ids, ideas)
+    ]
+    response = interrupt(
+        {
+            "type": "idea_selection",
+            "ideas": available_ideas,
+            "instruction": "Select exactly one idea to continue.",
+        }
+    )
+    selected_id = response.get("selected_idea_id")
+    if selected_id not in saved_ids:
+        raise ValueError("selected_idea_id must identify exactly one saved idea.")
+
+    selected_index = saved_ids.index(selected_id)
+    return {
+        "selected_idea_id": selected_id,
+        "selected_idea": ideas[selected_index],
+        "workflow_stage": "generating_content",
     }
 
 def retrieve_personal_knowledge(
@@ -154,6 +196,7 @@ def retrieve_personal_knowledge(
     return {
         **state,
         "retrieved_context": results,
+        "workflow_stage": "retrieving_context",
     }
 # this nodes is given the state and decides if research is required based on the content type and topic. It sets the research_required flag and the research_query accordingly.
 def decide_research(
@@ -171,6 +214,7 @@ def decide_research(
             **state,
             "research_required": True,
             "research_query": topic,
+            "workflow_stage": "researching",
         }
 
     # For personal/build-in-public content,
@@ -181,6 +225,7 @@ def decide_research(
             **state,
             "research_required": False,
             "research_query": "",
+            "workflow_stage": "generating_ideas",
         }
 
     # Technical and opinion content may benefit
@@ -194,12 +239,14 @@ def decide_research(
             **state,
             "research_required": True,
             "research_query": topic,
+            "workflow_stage": "researching",
         }
 
     return {
         **state,
         "research_required": False,
         "research_query": "",
+        "workflow_stage": "generating_ideas",
     }
 
 def research_topic(
@@ -215,6 +262,7 @@ def research_topic(
     return {
         **state,
         "research_results": results,
+        "workflow_stage": "generating_ideas",
     }
 # this code block act as the router to determine if reasearch is required or not. If research is required, it will call the research_topic node, otherwise it will return the state as is.
 def research_router(
@@ -256,16 +304,15 @@ Return only the search query.
     return {
         **state,
         "research_query": research_query,
+        "workflow_stage": "researching",
     }
 
 def generate_content_node(state:ContentState) :
-    ideas = state.get("ideas", [])
-
-    if not ideas:
+    selected_idea = state.get("selected_idea")
+    if selected_idea is None:
         raise ValueError("No content ideas available.")
 
-    selected_idea = ideas[0]
-    idea_data = selected_idea.model_dump()
+    idea_data = selected_idea.model_dump() if hasattr(selected_idea, "model_dump") else selected_idea
 
     content = generate_content(
         idea=idea_data,
@@ -279,6 +326,7 @@ def generate_content_node(state:ContentState) :
         "selected_idea": selected_idea,
         "generated_content": content,
         "refinement_count": 0,
+        "workflow_stage": "evaluating_content",
     }
 
 
@@ -293,8 +341,10 @@ def evaluate_content_node(state:ContentState):
     )
 
     return {
+        "evaluation": evaluation.model_dump(),
         "quality_score": evaluation.score,
         "quality_feedback": evaluation.feedback,
+        "workflow_stage": "evaluating_content",
     }
 
 def refine_content_node(state:ContentState):
@@ -323,6 +373,7 @@ def refine_content_node(state:ContentState):
     return {
         "generated_content": improved_content,
         "refinement_count": state.get("refinement_count", 0) + 1,
+        "workflow_stage": "evaluating_content",
     }
 
 # this code block is for the routing logic of the regeration base on the score returned
@@ -332,7 +383,10 @@ def content_quality_router(state):
     score = state.get("quality_score", 0)
     refinement_count = state.get("refinement_count", 0)
 
-    if score >= 8:
+    evaluation = state.get("evaluation", {})
+    should_refine = evaluation.get("should_refine", score < 8)
+
+    if score >= 8 or not should_refine:
         return "approved"
 
     if refinement_count >= 2:
@@ -352,14 +406,24 @@ def save_generated_content_node(state:ContentState):
     idea_data = idea.model_dump() if hasattr(idea, "model_dump") else idea
 
     content_id = save_generated_content(
-        idea_id=idea_data.get("id"),
+        idea_id=state.get("selected_idea_id") or idea_data.get("id"),
         platform=state["platform"],
         content_type=state["content_type"],
         content=state["generated_content"],
         quality_score=state.get("quality_score", 0),
+        thread_id=state.get("thread_id"),
+        prompt=state.get("original_prompt", state.get("topic")),
+        selected_idea=idea_data,
+        research_required=state.get("research_required"),
+        research_query=state.get("research_query"),
+        research_results=state.get("research_results", []),
+        evaluation=state.get("evaluation"),
+        quality_feedback=state.get("quality_feedback"),
+        refinement_count=state.get("refinement_count", 0),
     )
 
     return {
         "final_content": state["generated_content"],
         "content_id": content_id,
+        "workflow_stage": "waiting_for_human_review",
     }
