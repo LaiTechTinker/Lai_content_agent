@@ -1,11 +1,10 @@
 import sqlite3
 
-DB_PATH = "content_engine.db"
+DB_PATH = "content.db"
 
 
 def run_migrations():
     connection = sqlite3.connect(DB_PATH)
-
     columns = {
         row[1]
         for row in connection.execute(
@@ -14,6 +13,10 @@ def run_migrations():
     }
 
     migrations = {
+        "approved_at": """
+            ALTER TABLE generated_content
+            ADD COLUMN approved_at TIMESTAMP
+        """,
         "published_at": """
             ALTER TABLE generated_content
             ADD COLUMN published_at TIMESTAMP

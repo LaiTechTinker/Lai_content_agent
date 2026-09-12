@@ -3,3 +3,8 @@ __pycache__/
 *.pyc
 .venv/
 content.db
+*.db
+*.db-shm
+*.db-wal
+content_engine_checkpoints.db
+content_engine_checkpoints.db

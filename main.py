@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import os
-from app.db.database import init_db
 from contextlib import asynccontextmanager
+
+from app.db.database import init_db
 from app.api.routes import router as router1
 from app.api.content_review import router as router2
 from app.api.publish import router as router3
@@ -19,7 +19,20 @@ async def lifespan(app: FastAPI):
     print("Shutting down application...")
     print("Shutdown complete")
 
-app=FastAPI(title="Lai_agent", description="my personal content agent", version="1.0.0",lifespan=lifespan )
+app = FastAPI(title="Lai_agent", description="my personal content agent", version="1.0.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(router1, prefix="/api")
 app.include_router(router2, prefix="/api")

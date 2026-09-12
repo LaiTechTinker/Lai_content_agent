@@ -13,9 +13,8 @@ def generate_content(
     personal_context: list,
     research_results: list,
 ) -> str:
-
     personal_text = "\n\n".join(
-        item.get("chunk_text", "")
+        item.get("chunk_text") or item.get("text") or ""
         for item in personal_context
     )
 

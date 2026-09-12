@@ -1,29 +1,14 @@
-from fastapi import APIRouter
-from pydantic import BaseModel
-from fastapi import UploadFile, File
-import tempfile
 import os
-from app.graphs.content_graph import build_content_graph
-from app.services.document_service import (
-    ingest_document,
-)
-from app.db.database import list_knowledge
+import tempfile
 
-# this initialize our router
-router=APIRouter()
-config = {
-    "configurable": {
-        "thread_id": "content-123"
-    }
-}
-router=APIRouter()
-config = {
-    "configurable": {
-        "thread_id": "content-123"
-    }
-}
-# this inititialize our graph
-graph=build_content_graph()
+from fastapi import APIRouter, File, UploadFile
+from pydantic import BaseModel
+
+from app.db.database import get_connection, list_knowledge
+from app.graphs.content_graph import graph
+from app.services.document_service import ingest_document
+
+router = APIRouter()
 
 
 class IdeaRequest(BaseModel):
@@ -49,44 +34,55 @@ class  getIdeaResponse(BaseModel):
 #     created_at:str
 
 @router.post("/content/generate")
-def generate_content(request:IdeaRequest):
-    result=graph.invoke({
-        "topic":request.topic,
-        "platform":request.platform,
-        "content_type":request.content_type
-    },config=config)
+def generate_content(request: IdeaRequest):
+    thread_id = f"content-{request.topic.lower().replace(' ', '-')}-{request.platform.lower()}"
+    result = graph.invoke(
+        {
+            "topic": request.topic,
+            "platform": request.platform,
+            "content_type": request.content_type,
+            "ideas": [],
+        },
+        config={"configurable": {"thread_id": thread_id}},
+    )
+
+    review_interrupt = result.get("__interrupt__")
+    final_content = result.get("final_content") or result.get("generated_content")
+
     return {
-    "content_id": result.get("content_id"),
-    "idea": result.get("selected_idea"),
-    "platform": result.get("platform"),
-    "content_type": result.get("content_type"),
-    "content": result.get("final_content"),
-    "quality_score": result.get("quality_score"),
-    "refinement_count": result.get("refinement_count"),
-}
+        "thread_id": thread_id,
+        "content_id": result.get("content_id"),
+        "idea": result.get("selected_idea"),
+        "platform": result.get("platform"),
+        "content_type": result.get("content_type"),
+        "content": final_content,
+        "quality_score": result.get("quality_score"),
+        "refinement_count": result.get("refinement_count"),
+        "requires_review": bool(review_interrupt),
+        "interrupt": review_interrupt,
+    }
 
 
 @router.post("/ideas")
-def generate_ideas(request:IdeaRequest):
-    result=graph.invoke({
-        "topic":request.topic,
-        "platform":request.platform,
-        "content_type":request.content_type,
-        "ideas":[]
-    })
+def generate_ideas(request: IdeaRequest):
+    thread_id = f"ideas-{request.topic.lower().replace(' ', '-')}-{request.platform.lower()}"
+    result = graph.invoke(
+        {
+            "topic": request.topic,
+            "platform": request.platform,
+            "content_type": request.content_type,
+            "ideas": [],
+        },
+        config={"configurable": {"thread_id": thread_id}},
+    )
     return {
-    "topic": request.topic,
-    "platform": request.platform,
-    "content_type": request.content_type,
-    "research_required": result[
-        "research_required"
-    ],
-    "research_results": result.get(
-        "research_results",
-        []
-    ),
-    "ideas": result["ideas"],
-}
+        "topic": request.topic,
+        "platform": request.platform,
+        "content_type": request.content_type,
+        "research_required": result.get("research_required", False),
+        "research_results": result.get("research_results", []),
+        "ideas": result.get("ideas", []),
+    }
 
 @router.post("/knowledge/upload")
 async def upload_knowledge(
@@ -134,14 +130,70 @@ async def upload_knowledge(
 
 @router.get("/knowledge")
 def list_knowledge():
-   try:
-       result=list_knowledge()
+    try:
+        result = list_knowledge()
+        return result
+    except Exception as e:
+        return {"error": str(e)}
 
-       return result
-   except Exception as e:
-       return {"error":str(e)}
-    
-       
+
+@router.get("/content/history")
+def list_generated_content():
+    connection = get_connection()
+    rows = connection.execute(
+        """
+        SELECT
+            id,
+            idea_id,
+            platform,
+            content_type,
+            content,
+            quality_score,
+            status,
+            approved_at,
+            published_at,
+            publish_status,
+            external_post_id,
+            publish_error,
+            created_at
+        FROM generated_content
+        ORDER BY created_at DESC
+        """
+    ).fetchall()
+    connection.close()
+    return {"items": [dict(row) for row in rows]}
+
+
+@router.get("/content/{content_id}")
+def get_generated_content(content_id: int):
+    connection = get_connection()
+    row = connection.execute(
+        """
+        SELECT
+            id,
+            idea_id,
+            platform,
+            content_type,
+            content,
+            quality_score,
+            status,
+            approved_at,
+            published_at,
+            publish_status,
+            external_post_id,
+            publish_error,
+            created_at
+        FROM generated_content
+        WHERE id = ?
+        """,
+        (content_id,),
+    ).fetchone()
+    connection.close()
+
+    if row is None:
+        return {"error": "Content not found"}
+
+    return dict(row)
 
 # @router.get("/ideas/{idea_id}")
 # async def get_idea(idea_id:int, response_model=getIdeaResponse) ->:

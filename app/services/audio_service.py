@@ -1,17 +1,15 @@
-from app.tools.audio_generate import generate_audio
-model_name=""
-def generate_audio(text: str) -> str:
-    """
-    Convert text into speech.
+import os
 
-    Returns the generated audio file path or URL.
-    """
+from app.tools.audio_generate import generate_audio as generate_audio_file
+
+MODEL_NAME = os.getenv("AUDIO_MODEL", "")
+
+
+def generate_audio(text: str) -> str:
+    """Convert text into speech and return the output path or a placeholder."""
+    if not MODEL_NAME:
+        return "audio_not_configured"
     try:
-        audio_path=generate_audio(text=text,model_name=model_name)
-        return audio_path
+        return generate_audio_file(text=text, model_name=MODEL_NAME)
     except Exception as e:
         return f"error occured:{str(e)}"
-
-
-    
-    

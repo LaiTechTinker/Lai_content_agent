@@ -5,11 +5,13 @@ from pydantic import BaseModel
 
 from app.services.generated_content_service import get_content
 from app.services.social_account_service import get_social_account
-from app.services.publishing_service import (
+from app.services.publication_service import (
     can_publish,
     mark_publishing,
     mark_published,
     mark_publish_failed,
+)
+from app.services.publishing_service import (
     publish_content,
 )
 

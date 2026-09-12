@@ -36,47 +36,37 @@ def retrieve_relevant_chunks(
     top_k: int = 5,
     min_score: float = 0.35,
 ):
+    if not query or not query.strip():
+        return []
 
     query_embedding = embed_text(query)
-
     connection = get_connection()
-
-    rows = connection.execute("""
+    rows = connection.execute(
+        """
         SELECT
             id,
             document_id,
             chunk_text,
             embedding
         FROM document_chunks
-    """).fetchall()
-
+        """
+    ).fetchall()
     connection.close()
 
     results = []
-
     for row in rows:
-
-        stored_embedding = json.loads(
-            row["embedding"]
-        )
-
-        score = cosine_similarity(
-            query_embedding,
-            stored_embedding,
-        )
-
+        stored_embedding = json.loads(row["embedding"])
+        score = cosine_similarity(query_embedding, stored_embedding)
         if score >= min_score:
+            results.append(
+                {
+                    "chunk_id": row["id"],
+                    "document_id": row["document_id"],
+                    "chunk_text": row["chunk_text"],
+                    "text": row["chunk_text"],
+                    "score": score,
+                }
+            )
 
-         results.append({
-        "chunk_id": row["id"],
-        "document_id": row["document_id"],
-        "text": row["chunk_text"],
-        "score": score,
-    })
-
-    results.sort(
-        key=lambda item: item["score"],
-        reverse=True,
-    )
-
+    results.sort(key=lambda item: item["score"], reverse=True)
     return results[:top_k]

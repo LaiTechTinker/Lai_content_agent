@@ -1,19 +1,25 @@
 import os
-from pathlib import Path
-from app.tools.image_generate import generate_image_with_nano
-model_name=""
+
+from app.tools.image_generate import (generate_image_with_nano,generate_with_cloud)
+
+MODEL_NAME = os.getenv("IMAGE_MODEL", "")
+
+USE_GEMINI=False
 
 def generate_image(prompt: str) -> str:
-    """
-    Generate an image and return its local file path.
-
-    The actual provider implementation will live here.
-    """
+    """Generate an image and return its local file path."""
     try:
-      image_path=generate_image_with_nano(prompt=prompt,model_name=model_name)
-      return image_path
-
+     
+     if USE_GEMINI:
+       if not MODEL_NAME:
+         return "image_not_configured"
+       image_path=generate_image_with_nano(prompt=prompt, model_name=MODEL_NAME)
+       return image_path
+     else:
+        image_path=generate_with_cloud(prompt=prompt)
+        return image_path
+   
+        
     except Exception as e:
-       return f"Error occured:{str(e)}"
-
+        return f"Error occured:{str(e)}"
   

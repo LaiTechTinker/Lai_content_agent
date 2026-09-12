@@ -4,12 +4,7 @@ from app.graphs.content_graph import graph
 
 
 def test_human_review():
-
-    config = {
-    "configurable": {
-        "thread_id": "content-123"
-    }
-}
+    config = {"configurable": {"thread_id": "content-123"}}
 
     result = graph.invoke(
         {
@@ -27,9 +22,7 @@ def test_human_review():
         Command(
             resume={
                 "action": "edit",
-                "content": (
-                    "My edited version of the AI agent post."
-                ),
+                "content": "My edited version of the AI agent post.",
             }
         ),
         config=config,
