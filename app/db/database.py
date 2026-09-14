@@ -1,9 +1,224 @@
 import json
+import re
 import sqlite3
 
 from app.core.config import settings
+from app.db.base import Base
+from sqlalchemy import create_engine, text
 
 DB_PATH = settings.database_path
+
+
+def _is_sqlite_url(database_url: str) -> bool:
+    return database_url.startswith("sqlite:")
+
+
+def _configured_sqlite_path() -> str:
+    if settings.database_url == "sqlite:///:memory:":
+        return ":memory:"
+    if settings.database_url.startswith("sqlite:///"):
+        return settings.database_url.removeprefix("sqlite:///")
+    return DB_PATH
+
+
+class _CompatResult:
+    def __init__(self, result):
+        self._result = result
+        self.rowcount = result.rowcount
+        self.lastrowid = getattr(result.cursor, "lastrowid", None)
+
+    def fetchone(self):
+        row = self._result.fetchone()
+        return _CompatRow(row) if row is not None else None
+
+    def fetchall(self):
+        return [_CompatRow(row) for row in self._result.fetchall()]
+
+
+class _CompatRow(dict):
+    def __init__(self, row):
+        super().__init__(row._mapping)
+        self._values = tuple(row)
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._values[key]
+        return super().__getitem__(key)
+
+
+class _PostgresConnection:
+    """Small DB-API-shaped adapter for legacy service queries."""
+
+    def __init__(self, engine):
+        self._connection = engine.connect()
+        self._lastrowid = None
+
+    def cursor(self):
+        return self
+
+    def execute(self, sql, parameters=()):
+        bind_parameters = {}
+        parameter_index = 0
+
+        def replace_parameter(_match):
+            nonlocal parameter_index
+            name = f"p{parameter_index}"
+            bind_parameters[name] = parameters[parameter_index]
+            parameter_index += 1
+            return f":{name}"
+
+        statement = re.sub(r"\?", replace_parameter, sql)
+        result = self._connection.execute(text(statement), bind_parameters)
+        wrapped = _CompatResult(result)
+        self._lastrowid = wrapped.lastrowid
+        if self._lastrowid is None and statement.lstrip().upper().startswith("INSERT"):
+            self._lastrowid = self._connection.execute(text("SELECT lastval()"), {}).scalar()
+        wrapped.lastrowid = self._lastrowid
+        return wrapped
+
+    @property
+    def lastrowid(self):
+        return self._lastrowid
+
+    def commit(self):
+        self._connection.commit()
+
+    def close(self):
+        self._connection.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+
+def _ensure_phase2_schema(connection: sqlite3.Connection):
+    """Add Phase 2 structures without replacing existing SQLite data."""
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL UNIQUE,
+            password_hash TEXT,
+            name TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS content_versions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            content_id INTEGER NOT NULL,
+            user_id INTEGER,
+            version_number INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            evaluation TEXT,
+            metadata TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(content_id, version_number),
+            FOREIGN KEY (content_id) REFERENCES generated_content(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS workflow_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            thread_id TEXT NOT NULL UNIQUE,
+            status TEXT,
+            current_stage TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS refresh_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            expires_at TIMESTAMP NOT NULL,
+            revoked_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        """
+    )
+
+    ownership_tables = {
+        "content_ideas": "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+        "generated_content": "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+        "documents": "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+        "social_accounts": "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+        "oauth_states": "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+        "content_publications": "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+    }
+    for table_name in ownership_tables:
+        columns = {
+            row[1]
+            for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+        }
+        if "user_id" not in columns:
+            connection.execute(f"ALTER TABLE {table_name} ADD COLUMN user_id INTEGER")
+
+    social_unique_indexes = connection.execute(
+        "PRAGMA index_list(social_accounts)"
+    ).fetchall()
+    has_platform_only_unique = any(
+        index[2]
+        and [row[2] for row in connection.execute(f"PRAGMA index_info({index[1]})").fetchall()] == ["platform"]
+        for index in social_unique_indexes
+    )
+    if has_platform_only_unique:
+        connection.execute("ALTER TABLE social_accounts RENAME TO social_accounts_legacy")
+        connection.execute(
+            """
+            CREATE TABLE social_accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                platform TEXT NOT NULL,
+                account_id TEXT,
+                account_name TEXT,
+                access_token TEXT NOT NULL,
+                refresh_token TEXT,
+                token_expires_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                connected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, platform),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO social_accounts
+            (id, user_id, platform, account_id, account_name, access_token,
+             refresh_token, token_expires_at, created_at, updated_at, connected_at)
+            SELECT id, user_id, platform, account_id, account_name, access_token,
+                   refresh_token, token_expires_at, created_at, updated_at, connected_at
+            FROM social_accounts_legacy
+            """
+        )
+        connection.execute("DROP TABLE social_accounts_legacy")
+
+    indexes = {
+        "ix_content_ideas_user_created": "content_ideas(user_id, created_at)",
+        "ix_generated_content_user_created": "generated_content(user_id, created_at)",
+        "ix_documents_user_created": "documents(user_id, created_at)",
+        "ix_content_publications_user_created": "content_publications(user_id, created_at)",
+        "ix_workflow_sessions_user_updated": "workflow_sessions(user_id, updated_at)",
+    }
+    for index_name, columns in indexes.items():
+        connection.execute(f"CREATE INDEX IF NOT EXISTS {index_name} ON {columns}")
 
 
 def _initialize_schema(connection: sqlite3.Connection):
@@ -181,13 +396,20 @@ def _initialize_schema(connection: sqlite3.Connection):
             if column_name not in existing_columns:
                 connection.execute(ddl)
 
+    _ensure_phase2_schema(connection)
+
     connection.commit()
 
 
 def get_connection(db_path=DB_PATH):
-    connection = sqlite3.connect(db_path)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
+    if not _is_sqlite_url(settings.database_url) and db_path == DB_PATH:
+        return _PostgresConnection(create_engine(settings.database_url, pool_pre_ping=True))
+    if db_path != DB_PATH or _is_sqlite_url(settings.database_url):
+        if db_path == DB_PATH:
+            db_path = _configured_sqlite_path()
+        connection = sqlite3.connect(db_path)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
 
     table_exists = connection.execute(
         "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'generated_content'"
@@ -210,6 +432,26 @@ def get_connection(db_path=DB_PATH):
         oauth_table = connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'oauth_states'"
         ).fetchone()
+        phase2_tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+        ownership_columns = {
+            table_name: {
+                row[1]
+                for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+            }
+            for table_name in (
+                "content_ideas",
+                "generated_content",
+                "documents",
+                "social_accounts",
+                "oauth_states",
+                "content_publications",
+            )
+        }
         social_columns = {
             row[1]
             for row in connection.execute("PRAGMA table_info(social_accounts)").fetchall()
@@ -228,6 +470,8 @@ def get_connection(db_path=DB_PATH):
             or publication_table is None
             or oauth_table is None
             or "connected_at" not in social_columns
+            or not {"users", "content_versions", "workflow_sessions", "refresh_sessions"}.issubset(phase2_tables)
+            or any("user_id" not in columns for columns in ownership_columns.values())
         ):
             _initialize_schema(connection)
 
@@ -235,29 +479,33 @@ def get_connection(db_path=DB_PATH):
 
 
 def init_db():
-    connection = sqlite3.connect(DB_PATH)
+    if _is_sqlite_url(settings.database_url):
+        connection = sqlite3.connect(_configured_sqlite_path())
+        try:
+            _initialize_schema(connection)
+        finally:
+            connection.close()
+        return
+
+    engine = create_engine(settings.database_url, pool_pre_ping=True)
     try:
-        _initialize_schema(connection)
+        Base.metadata.create_all(engine)
     finally:
-        connection.close()
+        engine.dispose()
 
 
 def run_migrations():
-    connection = sqlite3.connect(DB_PATH)
-    try:
-        _initialize_schema(connection)
-    finally:
-        connection.close()
+    init_db()
 
 
-def save_content_ideas(topic: str, platform: str, angle: str, title: str):
+def save_content_ideas(topic: str, platform: str, angle: str, title: str, user_id: int | None = None):
     connection = get_connection()
     cursor = connection.execute(
         """
-        INSERT INTO content_ideas(topic, platform, angle, title)
-        VALUES(?,?,?,?)
+        INSERT INTO content_ideas(user_id, topic, platform, angle, title)
+        VALUES(?,?,?,?,?)
         """,
-        (topic, platform, angle, title),
+        (user_id, topic, platform, angle, title),
     )
     connection.commit()
     idea_id = cursor.lastrowid
@@ -265,14 +513,14 @@ def save_content_ideas(topic: str, platform: str, angle: str, title: str):
     return idea_id
 
 
-def create_document(filename: str, file_type: str):
+def create_document(filename: str, file_type: str, user_id: int | None = None):
     connection = get_connection()
     cursor = connection.execute(
         """
-        INSERT INTO documents (filename, file_type)
-        VALUES (?, ?)
+        INSERT INTO documents (user_id, filename, file_type)
+        VALUES (?, ?, ?)
         """,
-        (filename, file_type),
+        (user_id, filename, file_type),
     )
     connection.commit()
     document_id = cursor.lastrowid
@@ -293,17 +541,108 @@ def save_document_chunk(document_id: int, chunk_text: str, embedding: list[float
     connection.close()
 
 
-def list_knowledge():
+def list_knowledge(user_id: int | None = None):
+    connection = get_connection()
+    rows = connection.execute(
+        f"""
+        SELECT id, filename, file_type, created_at
+        FROM documents
+        {"WHERE user_id = ?" if user_id is not None else ""}
+        ORDER BY created_at DESC
+        """
+        , (user_id,) if user_id is not None else ()).fetchall()
+    connection.close()
+    return {"documents": [dict(row) for row in rows]}
+
+
+def create_workflow_session(thread_id: str, user_id: int):
+    connection = get_connection()
+    connection.execute(
+        """
+        INSERT INTO workflow_sessions (user_id, thread_id, status, current_stage)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(thread_id) DO UPDATE SET user_id = excluded.user_id
+        """,
+        (user_id, thread_id, "active", "started"),
+    )
+    connection.commit()
+    connection.close()
+
+
+def owns_workflow_session(thread_id: str, user_id: int) -> bool:
+    connection = get_connection()
+    row = connection.execute(
+        "SELECT 1 FROM workflow_sessions WHERE thread_id = ? AND user_id = ?",
+        (thread_id, user_id),
+    ).fetchone()
+    connection.close()
+    return row is not None
+
+
+def workflow_session_exists(thread_id: str) -> bool:
+    connection = get_connection()
+    row = connection.execute(
+        "SELECT 1 FROM workflow_sessions WHERE thread_id = ?",
+        (thread_id,),
+    ).fetchone()
+    connection.close()
+    return row is not None
+
+
+def get_workflow_session(thread_id: str, user_id: int):
+    connection = get_connection()
+    row = connection.execute(
+        "SELECT * FROM workflow_sessions WHERE thread_id = ? AND user_id = ?",
+        (thread_id, user_id),
+    ).fetchone()
+    connection.close()
+    return dict(row) if row else None
+
+
+def update_workflow_session(thread_id: str, user_id: int, status: str, current_stage: str):
+    connection = get_connection()
+    connection.execute(
+        """
+        UPDATE workflow_sessions
+        SET status = ?, current_stage = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE thread_id = ? AND user_id = ?
+        """,
+        (status, current_stage, thread_id, user_id),
+    )
+    connection.commit()
+    connection.close()
+
+
+def get_content_version_summary(content_id: int, user_id: int) -> dict:
+    connection = get_connection()
+    row = connection.execute(
+        """
+        SELECT COUNT(*) AS version_count, MAX(version_number) AS latest_version
+        FROM content_versions
+        WHERE content_id = ? AND user_id = ?
+        """,
+        (content_id, user_id),
+    ).fetchone()
+    connection.close()
+    return {
+        "version_count": row["version_count"] if row else 0,
+        "latest_version": row["latest_version"] if row else None,
+    }
+
+
+def list_content_versions(content_id: int, user_id: int) -> list[dict]:
     connection = get_connection()
     rows = connection.execute(
         """
-        SELECT id, filename, file_type, created_at
-        FROM documents
-        ORDER BY created_at DESC
-        """
+        SELECT version_number, content, evaluation, metadata, created_at
+        FROM content_versions
+        WHERE content_id = ? AND user_id = ?
+        ORDER BY version_number ASC
+        """,
+        (content_id, user_id),
     ).fetchall()
     connection.close()
-    return {"documents": [dict(row) for row in rows]}
+    return [dict(row) for row in rows]
 
 
 # async def get_idea_by_id(idea_id:int):

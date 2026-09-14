@@ -3,12 +3,13 @@ from datetime import datetime, timedelta
 import secrets
 
 
-def save_social_account(platform: str, account_id: str, account_name: str, access_token: str, refresh_token: str | None = None, token_expires_at: str | None = None):
+def save_social_account(platform: str, account_id: str, account_name: str, access_token: str, refresh_token: str | None = None, token_expires_at: str | None = None, user_id: int | None = None):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        """
+        f"""
         INSERT INTO social_accounts (
+            user_id,
             platform,
             account_id,
             account_name,
@@ -18,8 +19,8 @@ def save_social_account(platform: str, account_id: str, account_name: str, acces
             updated_at,
             connected_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        ON CONFLICT(platform) DO UPDATE SET
+        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id, platform) DO UPDATE SET
             account_id = excluded.account_id,
             account_name = excluded.account_name,
             access_token = excluded.access_token,
@@ -28,18 +29,18 @@ def save_social_account(platform: str, account_id: str, account_name: str, acces
             updated_at = CURRENT_TIMESTAMP
             , connected_at = CURRENT_TIMESTAMP
         """,
-        (platform, account_id, account_name, access_token, refresh_token, token_expires_at),
+        (user_id, platform, account_id, account_name, access_token, refresh_token, token_expires_at),
     )
     conn.commit()
     conn.close()
     return True
 
 
-def get_social_account(platform: str):
+def get_social_account(platform: str, user_id: int | None = None):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        """
+        f"""
         SELECT
             platform,
             account_id,
@@ -49,8 +50,9 @@ def get_social_account(platform: str):
             token_expires_at
         FROM social_accounts
         WHERE platform = ?
+        {"AND user_id = ?" if user_id is not None else ""}
         """,
-        (platform,),
+        (platform, user_id) if user_id is not None else (platform,),
     )
     row = cursor.fetchone()
     conn.close()
@@ -75,7 +77,7 @@ def create_oauth_state(state_value: str):
 def consume_oauth_state(state_value: str):
     conn = get_connection()
     row = conn.execute(
-        "SELECT state, platform, code_verifier, created_at FROM oauth_states WHERE state = ?",
+        "SELECT state, user_id, platform, code_verifier, created_at FROM oauth_states WHERE state = ?",
         (state_value,),
     ).fetchone()
     if row:
@@ -90,34 +92,38 @@ def consume_oauth_state(state_value: str):
     return dict(row)
 
 
-def create_oauth_state_record(platform: str, code_verifier: str | None = None):
+def create_oauth_state_record(platform: str, code_verifier: str | None = None, user_id: int | None = None):
     state_value = secrets.token_urlsafe(32)
     conn = get_connection()
     conn.execute(
-        "INSERT INTO oauth_states (state, platform, code_verifier) VALUES (?, ?, ?)",
-        (state_value, platform, code_verifier),
+        "INSERT INTO oauth_states (state, user_id, platform, code_verifier) VALUES (?, ?, ?, ?)",
+        (state_value, user_id, platform, code_verifier),
     )
     conn.commit()
     conn.close()
     return state_value
 
 
-def list_connected_accounts():
+def list_connected_accounts(user_id: int | None = None):
     conn = get_connection()
     rows = conn.execute(
-        """
+        f"""
         SELECT platform, account_id, account_name, connected_at
         FROM social_accounts
+        {"WHERE user_id = ?" if user_id is not None else ""}
         ORDER BY platform
         """
-    ).fetchall()
+        , (user_id,) if user_id is not None else ()).fetchall()
     conn.close()
     return [dict(row) for row in rows]
 
 
-def disconnect_social_account(platform: str) -> bool:
+def disconnect_social_account(platform: str, user_id: int | None = None) -> bool:
     conn = get_connection()
-    cursor = conn.execute("DELETE FROM social_accounts WHERE platform = ?", (platform,))
+    cursor = conn.execute(
+        f"DELETE FROM social_accounts WHERE platform = ?{ ' AND user_id = ?' if user_id is not None else ''}",
+        (platform, user_id) if user_id is not None else (platform,),
+    )
     conn.commit()
     conn.close()
     return cursor.rowcount > 0

@@ -22,6 +22,7 @@ def save_generated_content(
     evaluation: dict | None = None,
     quality_feedback: str | None = None,
     refinement_count: int = 0,
+    user_id: int | None = None,
 ):
     conn = get_connection()
 
@@ -31,6 +32,7 @@ def save_generated_content(
         """
         INSERT INTO generated_content
         (
+            user_id,
             idea_id,
             platform,
             content_type,
@@ -47,9 +49,10 @@ def save_generated_content(
             refinement_count,
             updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
+            user_id,
             idea_id,
             platform,
             content_type,
@@ -72,6 +75,22 @@ def save_generated_content(
 
     content_id = cursor.lastrowid
 
+    conn.execute(
+        """
+        INSERT INTO content_versions
+        (content_id, user_id, version_number, content, evaluation, metadata)
+        VALUES (?, ?, 1, ?, ?, ?)
+        """,
+        (
+            content_id,
+            user_id,
+            content,
+            json.dumps(evaluation) if evaluation is not None else None,
+            json.dumps({"source": "generation", "quality_score": quality_score}),
+        ),
+    )
+    conn.commit()
+
     conn.close()
 
     return content_id
@@ -80,6 +99,7 @@ def update_content_after_review(
     content_id: int,
     content: str,
     feedback: str | None = None,
+    user_id: int | None = None,
 ):
     conn = get_connection()
 
@@ -104,6 +124,19 @@ def update_content_after_review(
             _now(),
             content_id,
         ),
+    )
+
+    next_version = conn.execute(
+        "SELECT COALESCE(MAX(version_number), 0) + 1 FROM content_versions WHERE content_id = ?",
+        (content_id,),
+    ).fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO content_versions
+        (content_id, user_id, version_number, content, metadata)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (content_id, user_id, next_version, content, json.dumps({"source": "human_review", "feedback": feedback})),
     )
 
     conn.commit()
@@ -143,11 +176,11 @@ def mark_content_completed(content_id: int):
 
 
 
-def get_content(content_id: int):
+def get_content(content_id: int, user_id: int | None = None):
     connection=get_connection()
 
     row = connection.execute(
-        """
+        f"""
         SELECT
             id,
             idea_id,
@@ -176,8 +209,9 @@ def get_content(content_id: int):
             review_feedback
         FROM generated_content
         WHERE id = ?
+            {"AND user_id = ?" if user_id is not None else ""}
         """,
-        (content_id,),
+        (content_id, user_id) if user_id is not None else (content_id,),
     ).fetchone()
 
     connection.close()
@@ -215,9 +249,13 @@ def list_content(
     status: str | None = None,
     search: str | None = None,
     date: str | None = None,
+    user_id: int | None = None,
 ):
     conditions = []
     parameters = []
+    if user_id is not None:
+        conditions.append("user_id = ?")
+        parameters.append(user_id)
     if platform:
         conditions.append("platform = ?")
         parameters.append(platform)
@@ -259,17 +297,22 @@ def list_content(
     return [_decode_content(dict(row)) for row in rows], total
 
 
-def delete_content(content_id: int) -> bool:
+def delete_content(content_id: int, user_id: int | None = None) -> bool:
     conn = get_connection()
+    ownership = " AND user_id = ?" if user_id is not None else ""
+    ownership_parameters = (content_id, user_id) if user_id is not None else (content_id,)
     publication = conn.execute(
-        "SELECT 1 FROM content_publications WHERE content_id = ? LIMIT 1",
-        (content_id,),
+        f"SELECT 1 FROM content_publications WHERE content_id = ?{ownership} LIMIT 1",
+        ownership_parameters,
     ).fetchone()
     if publication:
         conn.close()
         raise ValueError("Content with publication history cannot be deleted.")
     conn.execute("DELETE FROM content_media WHERE content_id = ?", (content_id,))
-    cursor = conn.execute("DELETE FROM generated_content WHERE id = ?", (content_id,))
+    cursor = conn.execute(
+        f"DELETE FROM generated_content WHERE id = ?{ownership}",
+        ownership_parameters,
+    )
     conn.commit()
     conn.close()
     return cursor.rowcount > 0
@@ -281,6 +324,7 @@ def update_content_metadata(
     platform: str | None = None,
     content_type: str | None = None,
     status: str | None = None,
+    user_id: int | None = None,
 ) -> dict | None:
     updates = []
     values = []
@@ -299,17 +343,20 @@ def update_content_metadata(
         updates.append("status = ?")
         values.append(status)
     if not updates:
-        return get_content(content_id)
+        return get_content(content_id, user_id=user_id)
 
     updates.append("updated_at = ?")
-    values.extend([_now(), content_id])
+    values.append(_now())
+    values.append(content_id)
+    if user_id is not None:
+        values.append(user_id)
     conn = get_connection()
     cursor = conn.execute(
-        f"UPDATE generated_content SET {', '.join(updates)} WHERE id = ?",
+        f"UPDATE generated_content SET {', '.join(updates)} WHERE id = ?{ ' AND user_id = ?' if user_id is not None else ''}",
         values,
     )
     conn.commit()
     conn.close()
     if cursor.rowcount == 0:
         return None
-    return get_content(content_id)
+    return get_content(content_id, user_id=user_id)

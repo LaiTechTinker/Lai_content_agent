@@ -30,14 +30,14 @@ def _pkce_pair():
     return verifier, challenge
 
 
-def build_connect_url(platform: str):
+def build_connect_url(platform: str, user_id: int | None = None):
     platform = normalize_platform(platform)
     if platform == "LinkedIn":
         client_id = settings.linkedin_client_id
         redirect_uri = settings.linkedin_redirect_uri
         if not client_id or not redirect_uri:
             raise RuntimeError("LinkedIn OAuth is not configured.")
-        state = create_oauth_state_record(platform)
+        state = create_oauth_state_record(platform, user_id=user_id)
         query = urlencode({
             "response_type": "code",
             "client_id": client_id,
@@ -52,7 +52,7 @@ def build_connect_url(platform: str):
     if not client_id or not redirect_uri:
         raise RuntimeError("X OAuth is not configured.")
     verifier, challenge = _pkce_pair()
-    state = create_oauth_state_record(platform, verifier)
+    state = create_oauth_state_record(platform, verifier, user_id=user_id)
     query = urlencode({
         "response_type": "code",
         "client_id": client_id,
@@ -127,5 +127,6 @@ def complete_callback(platform: str, code: str, state: str):
         access_token=token["access_token"],
         refresh_token=token.get("refresh_token"),
         token_expires_at=None,
+        user_id=state_record.get("user_id"),
     )
     return {"platform": platform, "account_name": account_name}

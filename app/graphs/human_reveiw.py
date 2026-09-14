@@ -93,6 +93,7 @@ def save_approval_node(state):
         content_id=content_id,
         content=final_content,
         feedback=state.get("human_feedback"),
+        user_id=state.get("user_id"),
     )
 
     return {

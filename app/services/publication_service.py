@@ -8,15 +8,15 @@ def _now():
     return datetime.utcnow().isoformat()
 
 
-def create_publication(content_id, platform, account_id, media_ids=None):
+def create_publication(content_id, platform, account_id, media_ids=None, user_id=None):
     conn = get_connection()
     cursor = conn.execute(
         """
         INSERT INTO content_publications
-        (content_id, platform, account_id, status, media_ids, updated_at)
-        VALUES (?, ?, ?, 'pending', ?, ?)
+        (user_id, content_id, platform, account_id, status, media_ids, updated_at)
+        VALUES (?, ?, ?, ?, 'pending', ?, ?)
         """,
-        (content_id, platform, account_id, json.dumps(media_ids or []), _now()),
+        (user_id, content_id, platform, account_id, json.dumps(media_ids or []), _now()),
     )
     conn.commit()
     publication_id = cursor.lastrowid
@@ -64,40 +64,42 @@ def _decode(publication):
     return publication
 
 
-def get_publication(publication_id):
+def get_publication(publication_id, user_id=None):
     conn = get_connection()
     row = conn.execute(
-        "SELECT * FROM content_publications WHERE id = ?",
-        (publication_id,),
+        f"SELECT * FROM content_publications WHERE id = ?{ ' AND user_id = ?' if user_id is not None else ''}",
+        (publication_id, user_id) if user_id is not None else (publication_id,),
     ).fetchone()
     conn.close()
     return _decode(dict(row)) if row else None
 
 
-def list_publications(content_id):
+def list_publications(content_id, user_id=None):
     conn = get_connection()
     rows = conn.execute(
-        """
+        f"""
         SELECT * FROM content_publications
         WHERE content_id = ?
+        {"AND user_id = ?" if user_id is not None else ""}
         ORDER BY created_at DESC, id DESC
         """,
-        (content_id,),
+        (content_id, user_id) if user_id is not None else (content_id,),
     ).fetchall()
     conn.close()
     return [_decode(dict(row)) for row in rows]
 
 
-def has_published_attempt(content_id, platform, account_id):
+def has_published_attempt(content_id, platform, account_id, user_id=None):
     conn = get_connection()
     row = conn.execute(
-        """
+        f"""
         SELECT id FROM content_publications
         WHERE content_id = ? AND platform = ?
           AND account_id IS ? AND status = 'published'
+          {"AND user_id = ?" if user_id is not None else ""}
         ORDER BY id DESC LIMIT 1
         """,
-        (content_id, platform, account_id),
+        (content_id, platform, account_id, user_id) if user_id is not None else (content_id, platform, account_id),
     ).fetchone()
     conn.close()
     return row[0] if row else None

@@ -54,6 +54,10 @@ class Settings:
     linkedin_api_version: str = os.getenv("LINKEDIN_API_VERSION", "20240201")
 
     secret_key: str | None = os.getenv("SECRET_KEY")
+    jwt_secret_key: str | None = os.getenv("JWT_SECRET_KEY") or os.getenv("SECRET_KEY")
+    jwt_algorithm: str = os.getenv("JWT_ALGORITHM", "HS256")
+    access_token_expire_minutes: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+    refresh_token_expire_days: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "30"))
     cors_origins: list[str] = None  # type: ignore[assignment]
     cors_methods: list[str] = None  # type: ignore[assignment]
     cors_headers: list[str] = None  # type: ignore[assignment]
@@ -78,6 +82,13 @@ class Settings:
         if not self.cloudflare_secret or not self.cloudflare_url:
             raise RuntimeError("CLOUDFLARE_SECRET and CLOUDFLARE_URL are required for Cloudflare image generation.")
         return self.cloudflare_secret, self.cloudflare_url
+
+    def require_jwt_secret(self) -> str:
+        if self.jwt_secret_key:
+            return self.jwt_secret_key
+        if self.environment == "development":
+            return "development-only-change-this-jwt-secret"
+        raise RuntimeError("JWT_SECRET_KEY is required outside development.")
 
 
 settings = Settings()

@@ -3,11 +3,12 @@ import tempfile
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from app.db.database import get_connection, list_knowledge as list_knowledge_documents
+from app.db.database import create_workflow_session, get_connection, list_content_versions, list_knowledge as list_knowledge_documents
+from app.api.dependencies import get_current_user
 from app.graphs.content_graph import graph
 from app.services.document_service import ingest_document
 from app.services.generated_content_service import (
@@ -87,8 +88,9 @@ class  getIdeaResponse(BaseModel):
 #     created_at:str
 
 @router.post("/content/generate")
-def generate_content(request: IdeaRequest):
+def generate_content(request: IdeaRequest, current_user: dict = Depends(get_current_user)):
     thread_id = _thread_id("content", request)
+    create_workflow_session(thread_id, current_user["id"])
     result = graph.invoke(
         {
             "topic": request.topic,
@@ -97,6 +99,7 @@ def generate_content(request: IdeaRequest):
             "platform": request.platform,
             "content_type": request.content_type,
             "ideas": [],
+            "user_id": current_user["id"],
         },
         config={"configurable": {"thread_id": thread_id}},
     )
@@ -107,8 +110,9 @@ def generate_content(request: IdeaRequest):
 
 
 @router.post("/ideas")
-def generate_ideas(request: IdeaRequest):
+def generate_ideas(request: IdeaRequest, current_user: dict = Depends(get_current_user)):
     thread_id = _thread_id("ideas", request)
+    create_workflow_session(thread_id, current_user["id"])
     result = graph.invoke(
         {
             "topic": request.topic,
@@ -117,6 +121,7 @@ def generate_ideas(request: IdeaRequest):
             "platform": request.platform,
             "content_type": request.content_type,
             "ideas": [],
+            "user_id": current_user["id"],
         },
         config={"configurable": {"thread_id": thread_id}},
     )
@@ -124,7 +129,8 @@ def generate_ideas(request: IdeaRequest):
 
 @router.post("/knowledge/upload")
 async def upload_knowledge(
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
 ):
 
     allowed_extensions = {
@@ -155,9 +161,7 @@ async def upload_knowledge(
 
     try:
 
-        result = ingest_document(
-            temp_path
-        )
+        result = ingest_document(temp_path, user_id=current_user["id"])
 
         return result
 
@@ -167,19 +171,32 @@ async def upload_knowledge(
 
 
 @router.get("/knowledge")
-def list_knowledge():
+def list_knowledge(current_user: dict = Depends(get_current_user)):
     try:
-        result = list_knowledge_documents()
+        result = list_knowledge_documents(user_id=current_user["id"])
         return result
     except Exception as e:
         return {"error": str(e)}
 
 
-def _library_item(record: dict, include_publications: bool = False) -> dict:
-    media = get_media_for_content(record["id"])
-    publications = list_publications(record["id"])
+def _library_item(record: dict, include_publications: bool = False, user_id: int | None = None) -> dict:
+    media = get_media_for_content(record["id"], user_id=user_id)
+    publications = list_publications(record["id"], user_id=user_id)
+    quality_score = record.get("quality_score")
+    if quality_score is not None and quality_score <= 10:
+        quality_score *= 10
+    evaluation = record.get("evaluation")
+    if isinstance(evaluation, dict):
+        evaluation = {**evaluation}
+        if evaluation.get("score") is not None and evaluation["score"] <= 10:
+            evaluation["score"] *= 10
+    title = (record.get("selected_idea") or {}).get("title") if isinstance(record.get("selected_idea"), dict) else None
+    title = title or record.get("prompt") or record.get("content", "")[:80]
+    versions = list_content_versions(record["id"], user_id) if user_id is not None else []
     return {
         "id": record["id"],
+        "title": title,
+        "preview": record.get("content", "")[:160],
         "thread_id": record.get("thread_id"),
         "prompt": record.get("prompt"),
         "platform": record["platform"],
@@ -189,8 +206,8 @@ def _library_item(record: dict, include_publications: bool = False) -> dict:
         "research_used": record.get("research_used", False),
         "research_query": record.get("research_query"),
         "research_results": record.get("research_results", []),
-        "evaluation": record.get("evaluation"),
-        "quality_score": record.get("quality_score"),
+        "evaluation": evaluation,
+        "quality_score": quality_score,
         "quality_feedback": record.get("quality_feedback"),
         "refinement_count": record.get("refinement_count", 0),
         "status": record.get("status"),
@@ -210,6 +227,14 @@ def _library_item(record: dict, include_publications: bool = False) -> dict:
             }
             for item in publications
         ],
+        "versions": [
+            {
+                "version": item["version_number"],
+                "content": item["content"],
+                "created_at": item["created_at"],
+            }
+            for item in versions
+        ],
     }
 
 
@@ -222,6 +247,7 @@ def list_content_library(
     status: str | None = None,
     search: str | None = None,
     date: str | None = None,
+    current_user: dict = Depends(get_current_user),
 ):
     if page < 1 or limit < 1 or limit > 100:
         raise HTTPException(status_code=400, detail="page must be >= 1 and limit must be 1-100")
@@ -233,10 +259,11 @@ def list_content_library(
         status=status,
         search=search,
         date=date,
+        user_id=current_user["id"],
     )
     total_pages = (total + limit - 1) // limit if total else 0
     return {
-        "items": [_library_item(record) for record in records],
+        "items": [_library_item(record, user_id=current_user["id"]) for record in records],
         "page": page,
         "limit": limit,
         "total": total,
@@ -245,24 +272,24 @@ def list_content_library(
 
 
 @router.get("/content/history")
-def list_content_history():
-    records, total = list_content(page=1, limit=100)
+def list_content_history(current_user: dict = Depends(get_current_user)):
+    records, total = list_content(page=1, limit=100, user_id=current_user["id"])
     return {
-        "items": [_library_item(record) for record in records],
+        "items": [_library_item(record, user_id=current_user["id"]) for record in records],
         "total": total,
     }
 
 
 @router.get("/content/{content_id}")
-def get_generated_content(content_id: int):
-    record = get_content(content_id)
+def get_generated_content(content_id: int, current_user: dict = Depends(get_current_user)):
+    record = get_content(content_id, user_id=current_user["id"])
     if record is None:
         raise HTTPException(status_code=404, detail="Content not found")
-    return _library_item(record, include_publications=True)
+    return _library_item(record, include_publications=True, user_id=current_user["id"])
 
 
 @router.patch("/content/{content_id}")
-def patch_generated_content(content_id: int, request: ContentPatchRequest):
+def patch_generated_content(content_id: int, request: ContentPatchRequest, current_user: dict = Depends(get_current_user)):
     try:
         record = update_content_metadata(
             content_id=content_id,
@@ -270,18 +297,19 @@ def patch_generated_content(content_id: int, request: ContentPatchRequest):
             platform=request.platform,
             content_type=request.content_type,
             status=request.status,
+            user_id=current_user["id"],
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if record is None:
         raise HTTPException(status_code=404, detail="Content not found")
-    return _library_item(record)
+    return _library_item(record, user_id=current_user["id"])
 
 
 @router.delete("/content/{content_id}")
-def remove_generated_content(content_id: int):
+def remove_generated_content(content_id: int, current_user: dict = Depends(get_current_user)):
     try:
-        deleted = delete_content(content_id)
+        deleted = delete_content(content_id, user_id=current_user["id"])
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not deleted:
@@ -290,8 +318,8 @@ def remove_generated_content(content_id: int):
 
 
 @router.get("/media/{media_id}")
-def serve_media(media_id: int):
-    media = get_media(media_id)
+def serve_media(media_id: int, current_user: dict = Depends(get_current_user)):
+    media = get_media(media_id, user_id=current_user["id"])
     if media is None or media["status"] not in {"generated", "accepted"}:
         raise HTTPException(status_code=404, detail="Media not found")
 

@@ -1,6 +1,6 @@
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.services.generated_content_service import get_content
@@ -25,6 +25,7 @@ from app.services.social_account_service import (
     get_social_account,
     list_connected_accounts,
 )
+from app.api.dependencies import get_current_user
 
 router = APIRouter(tags=["publishing"])
 
@@ -44,12 +45,12 @@ def _post_details(platform: str, result: dict):
     return post_id, f"https://www.linkedin.com/feed/update/{post_id}"
 
 
-def _validate_media(content_id: int, media_ids: list[int]):
+def _validate_media(content_id: int, media_ids: list[int], user_id: int | None = None):
     if not media_ids:
         return []
     accepted = []
     for media_id in media_ids:
-        media = get_media(media_id)
+        media = get_media(media_id, user_id=user_id)
         if (
             not media
             or media["content_id"] != content_id
@@ -63,7 +64,8 @@ def _validate_media(content_id: int, media_ids: list[int]):
 
 
 @router.get("/publishing/accounts")
-def publishing_accounts():
+def publishing_accounts(current_user: dict | None = Depends(get_current_user)):
+    user_id = current_user["id"] if isinstance(current_user, dict) else None
     return [
         {
             "platform": account["platform"],
@@ -72,15 +74,16 @@ def publishing_accounts():
             "account_name": account.get("account_name"),
             "connected_at": account.get("connected_at"),
         }
-        for account in list_connected_accounts()
+        for account in list_connected_accounts(user_id=user_id)
     ]
 
 
 @router.get("/publishing/{platform}/connect")
-def connect_platform(platform: str):
+def connect_platform(platform: str, current_user: dict | None = Depends(get_current_user)):
+    user_id = current_user["id"] if isinstance(current_user, dict) else None
     try:
         normalized = normalize_platform(platform)
-        return {"platform": normalized, "authorization_url": build_connect_url(normalized)}
+        return {"platform": normalized, "authorization_url": build_connect_url(normalized, user_id=user_id)}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -107,17 +110,19 @@ def platform_callback(
 
 
 @router.delete("/publishing/{platform}/disconnect")
-def disconnect_platform(platform: str):
+def disconnect_platform(platform: str, current_user: dict | None = Depends(get_current_user)):
+    user_id = current_user["id"] if isinstance(current_user, dict) else None
     try:
         normalized = normalize_platform(platform)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"disconnected": disconnect_social_account(normalized), "platform": normalized}
+    return {"disconnected": disconnect_social_account(normalized, user_id=user_id), "platform": normalized}
 
 
 @router.post("/content/{content_id}/publish")
-def publish(content_id: int, request: PublishRequest):
-    content = get_content(content_id)
+def publish(content_id: int, request: PublishRequest, current_user: dict | None = Depends(get_current_user)):
+    user_id = current_user["id"] if isinstance(current_user, dict) else None
+    content = get_content(content_id, user_id=user_id)
     if content is None:
         raise HTTPException(status_code=404, detail="Content not found")
     if content["status"] not in {"approved", "completed"}:
@@ -127,22 +132,22 @@ def publish(content_id: int, request: PublishRequest):
 
     try:
         platform = normalize_platform(request.platform)
-        account = get_social_account(platform)
+        account = get_social_account(platform, user_id=user_id)
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    accepted_media = _validate_media(content_id, request.media_ids)
+    accepted_media = _validate_media(content_id, request.media_ids, user_id=user_id)
     if accepted_media:
         raise HTTPException(
             status_code=400,
             detail=f"{platform} image upload is not implemented; publish text without media.",
         )
 
-    previous = has_published_attempt(content_id, platform, account.get("account_id"))
+    previous = has_published_attempt(content_id, platform, account.get("account_id"), user_id=user_id)
     if previous and not request.republish:
         raise HTTPException(status_code=409, detail=f"Content has already been published to {platform}.")
 
-    publication_id = create_publication(content_id, platform, account.get("account_id"), request.media_ids)
+    publication_id = create_publication(content_id, platform, account.get("account_id"), request.media_ids, user_id=user_id)
     mark_publication_publishing(publication_id)
     try:
         result = publish_content(
@@ -162,25 +167,32 @@ def publish(content_id: int, request: PublishRequest):
 
 
 @router.get("/content/{content_id}/publications")
-def content_publications(content_id: int):
-    if get_content(content_id) is None:
+def content_publications(content_id: int, current_user: dict = Depends(get_current_user)):
+    user_id = current_user["id"] if isinstance(current_user, dict) else None
+    if get_content(content_id, user_id=user_id) is None:
         raise HTTPException(status_code=404, detail="Content not found")
-    return {"items": list_publications(content_id)}
+    return {"items": list_publications(content_id, user_id=user_id)}
 
 
 @router.get("/publications/{publication_id}")
-def publication_details(publication_id: int):
-    publication = get_publication(publication_id)
+def publication_details(publication_id: int, current_user: dict = Depends(get_current_user)):
+    user_id = current_user["id"] if isinstance(current_user, dict) else None
+    publication = get_publication(publication_id, user_id=user_id)
     if publication is None:
         raise HTTPException(status_code=404, detail="Publication not found")
     return publication
 
 
 @router.post("/publications/{publication_id}/retry")
-def retry_publication(publication_id: int):
-    previous = get_publication(publication_id)
+def retry_publication(publication_id: int, current_user: dict = Depends(get_current_user)):
+    user_id = current_user["id"] if isinstance(current_user, dict) else None
+    previous = get_publication(publication_id, user_id=user_id)
     if previous is None:
         raise HTTPException(status_code=404, detail="Publication not found")
     if previous["status"] not in {"failed", "cancelled"}:
         raise HTTPException(status_code=400, detail="Only failed or cancelled publications can be retried.")
-    return publish(previous["content_id"], PublishRequest(platform=previous["platform"], media_ids=previous["media_ids"], republish=True))
+    return publish(
+        previous["content_id"],
+        PublishRequest(platform=previous["platform"], media_ids=previous["media_ids"], republish=True),
+        current_user=current_user,
+    )

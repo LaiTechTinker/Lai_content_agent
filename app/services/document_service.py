@@ -48,7 +48,7 @@ def chunk_text(text: str) -> list[str]:
     return splitter.split_text(text)
 
 
-def ingest_document(file_path: str):
+def ingest_document(file_path: str, user_id: int | None = None):
 
     from pathlib import Path
 
@@ -66,6 +66,7 @@ def ingest_document(file_path: str):
     document_id = create_document(
         filename=path.name,
         file_type=path.suffix.lower(),
+        user_id=user_id,
     )
 
     embeddings = embed_documents(chunks)

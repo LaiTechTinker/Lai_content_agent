@@ -2,6 +2,7 @@ from typing import Any, NotRequired, TypedDict
 
 
 class ContentState(TypedDict):
+    user_id: NotRequired[int]
     topic: str
     platform: str
     content_type: str

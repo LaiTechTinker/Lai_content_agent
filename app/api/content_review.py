@@ -1,10 +1,12 @@
 from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
 from langgraph.types import Command
 from pydantic import BaseModel
 
 from app.graphs.content_graph import graph
+from app.api.dependencies import get_current_user
+from app.db.database import owns_workflow_session
 
 router = APIRouter()
 
@@ -29,7 +31,9 @@ class ReviewRequest(BaseModel):
     content: str | None = None
     feedback: str | None = None
 
-def _resume_review(request: ReviewRequest):
+def _resume_review(request: ReviewRequest, user_id: int | None = None):
+    if user_id is not None and not owns_workflow_session(request.thread_id, user_id):
+        raise HTTPException(status_code=404, detail="Workflow session not found")
     config = {"configurable": {"thread_id": request.thread_id}}
     try:
         resume_payload = {
@@ -55,10 +59,10 @@ def _resume_review(request: ReviewRequest):
 
 
 @router.post("/review")
-def handle_review(request: ReviewRequest):
-    return _resume_review(request)
+def handle_review(request: ReviewRequest, current_user: dict = Depends(get_current_user)):
+    return _resume_review(request, current_user["id"])
 
 
 @router.post("/reveiw")
-def handle_legacy_review(request: ReviewRequest):
-    return _resume_review(request)
+def handle_legacy_review(request: ReviewRequest, current_user: dict = Depends(get_current_user)):
+    return _resume_review(request, current_user["id"])

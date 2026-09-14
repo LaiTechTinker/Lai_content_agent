@@ -1,7 +1,7 @@
 from app.db.database import save_content_ideas
 
 
-def save_ideas(topic: str, ideas: list):
+def save_ideas(topic: str, ideas: list, user_id: int | None = None):
 
     saved_ids = []
 
@@ -12,6 +12,7 @@ def save_ideas(topic: str, ideas: list):
             title=idea.title,
             angle=idea.angle,
             platform=idea.platform,
+            user_id=user_id,
         )
 
         saved_ids.append(idea_id)

@@ -8,6 +8,8 @@ from app.db.database import init_db
 from app.api.routes import router as router1
 from app.api.content_review import router as router2
 from app.api.publish import router as router3
+from app.api.auth import router as auth_router
+from app.api.workflow import router as workflow_router
 
 logging.basicConfig(
     level=logging.DEBUG if settings.debug else logging.INFO,
@@ -39,6 +41,8 @@ app.add_middleware(
 app.include_router(router1, prefix="/api")
 app.include_router(router2, prefix="/api")
 app.include_router(router3, prefix="/api")
+app.include_router(auth_router, prefix="/api")
+app.include_router(workflow_router, prefix="/api")
 
 app.get("/health")
 def health_check():

@@ -148,6 +148,7 @@ def save_ideas_node(state: ContentState) -> ContentState:
     ids = save_ideas(
         topic=state["topic"],
         ideas=state["ideas"],
+        user_id=state.get("user_id"),
     )
 
     return {
@@ -420,6 +421,7 @@ def save_generated_content_node(state:ContentState):
         evaluation=state.get("evaluation"),
         quality_feedback=state.get("quality_feedback"),
         refinement_count=state.get("refinement_count", 0),
+        user_id=state.get("user_id"),
     )
 
     return {

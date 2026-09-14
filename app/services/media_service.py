@@ -68,17 +68,20 @@ def update_media(
     conn.close()
 
 
-def get_media_for_content(content_id: int):
+def get_media_for_content(content_id: int, user_id: int | None = None):
     conn = get_connection()
     rows = conn.execute(
-        """
-        SELECT id, content_id, media_type, media_url, status,
-               attempt_count, error, created_at
+        f"""
+         SELECT content_media.id, content_media.content_id, content_media.media_type,
+             content_media.media_url, content_media.status, content_media.attempt_count,
+             content_media.error, content_media.created_at
         FROM content_media
-        WHERE content_id = ?
-        ORDER BY created_at DESC, id DESC
+        JOIN generated_content ON generated_content.id = content_media.content_id
+        WHERE content_media.content_id = ?
+            {"AND generated_content.user_id = ?" if user_id is not None else ""}
+        ORDER BY content_media.created_at DESC, content_media.id DESC
         """,
-        (content_id,),
+        (content_id, user_id) if user_id is not None else (content_id,),
     ).fetchall()
     conn.close()
 
@@ -95,16 +98,19 @@ def get_media_for_content(content_id: int):
     return media
 
 
-def get_media(media_id: int):
+def get_media(media_id: int, user_id: int | None = None):
     conn = get_connection()
     row = conn.execute(
-        """
-        SELECT id, content_id, media_type, media_url, status,
-               attempt_count, error, created_at
+        f"""
+         SELECT content_media.id, content_media.content_id, content_media.media_type,
+             content_media.media_url, content_media.status, content_media.attempt_count,
+             content_media.error, content_media.created_at
         FROM content_media
-        WHERE id = ?
+        JOIN generated_content ON generated_content.id = content_media.content_id
+        WHERE content_media.id = ?
+        {"AND generated_content.user_id = ?" if user_id is not None else ""}
         """,
-        (media_id,),
+        (media_id, user_id) if user_id is not None else (media_id,),
     ).fetchone()
     conn.close()
     return dict(row) if row else None
