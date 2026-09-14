@@ -1,19 +1,16 @@
 import base64
 import hashlib
-import os
 import secrets
 from urllib.parse import urlencode
 
 import requests
-from dotenv import load_dotenv
+from app.core.config import settings
 
 from app.services.social_account_service import (
     create_oauth_state_record,
     consume_oauth_state,
     save_social_account,
 )
-
-load_dotenv()
 
 SUPPORTED_PLATFORMS = {"X", "LinkedIn"}
 
@@ -36,8 +33,8 @@ def _pkce_pair():
 def build_connect_url(platform: str):
     platform = normalize_platform(platform)
     if platform == "LinkedIn":
-        client_id = os.getenv("LINKEDIN_CLIENT_ID")
-        redirect_uri = os.getenv("LINKEDIN_REDIRECT_URI")
+        client_id = settings.linkedin_client_id
+        redirect_uri = settings.linkedin_redirect_uri
         if not client_id or not redirect_uri:
             raise RuntimeError("LinkedIn OAuth is not configured.")
         state = create_oauth_state_record(platform)
@@ -50,8 +47,8 @@ def build_connect_url(platform: str):
         })
         return f"https://www.linkedin.com/oauth/v2/authorization?{query}"
 
-    client_id = os.getenv("X_CLIENT_ID")
-    redirect_uri = os.getenv("X_REDIRECT_URI")
+    client_id = settings.x_client_id
+    redirect_uri = settings.x_redirect_uri
     if not client_id or not redirect_uri:
         raise RuntimeError("X OAuth is not configured.")
     verifier, challenge = _pkce_pair()
@@ -80,9 +77,9 @@ def complete_callback(platform: str, code: str, state: str):
             data={
                 "grant_type": "authorization_code",
                 "code": code,
-                "redirect_uri": os.getenv("LINKEDIN_REDIRECT_URI"),
-                "client_id": os.getenv("LINKEDIN_CLIENT_ID"),
-                "client_secret": os.getenv("LINKEDIN_CLIENT_SECRET"),
+                "redirect_uri": settings.linkedin_redirect_uri,
+                "client_id": settings.linkedin_client_id,
+                "client_secret": settings.linkedin_client_secret,
             },
             timeout=30,
         )
@@ -103,8 +100,8 @@ def complete_callback(platform: str, code: str, state: str):
             data={
                 "code": code,
                 "grant_type": "authorization_code",
-                "client_id": os.getenv("X_CLIENT_ID"),
-                "redirect_uri": os.getenv("X_REDIRECT_URI"),
+                "client_id": settings.x_client_id,
+                "redirect_uri": settings.x_redirect_uri,
                 "code_verifier": state_record.get("code_verifier"),
             },
             timeout=30,

@@ -1,6 +1,8 @@
 import sqlite3
 
-DB_PATH = "content.db"
+from app.core.config import settings
+
+DB_PATH = settings.database_path
 
 
 def run_migrations():

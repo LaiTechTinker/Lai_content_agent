@@ -1,7 +1,6 @@
 fastapi
 uvicorn[standard]
 langchain
-langchain-google-genai
 langgraph
 pydantic
 python-dotenv
@@ -14,4 +13,4 @@ python-multipart
 langgraph-checkpoint-sqlite
 pytest
 pillow
-request
+requests

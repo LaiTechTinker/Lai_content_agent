@@ -1,10 +1,4 @@
-import os
-
 import requests
-
-from dotenv import load_dotenv
-
-load_dotenv()
 
 
 X_POST_URL = "https://api.x.com/2/tweets"

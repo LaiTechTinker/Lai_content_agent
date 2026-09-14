@@ -1,18 +1,13 @@
-import os
+from app.core.config import settings
 
-from dotenv import load_dotenv
+X_CLIENT_ID = settings.x_client_id
+X_CLIENT_SECRET = settings.x_client_secret
+X_REDIRECT_URI = settings.x_redirect_uri
 
-load_dotenv()
-
-
-X_CLIENT_ID = os.getenv("X_CLIENT_ID")
-X_CLIENT_SECRET = os.getenv("X_CLIENT_SECRET")
-X_REDIRECT_URI = os.getenv("X_REDIRECT_URI")
-
-LINKEDIN_CLIENT_ID = os.getenv("LINKEDIN_CLIENT_ID")
-LINKEDIN_CLIENT_SECRET = os.getenv("LINKEDIN_CLIENT_SECRET")
-LINKEDIN_REDIRECT_URI = os.getenv("LINKEDIN_REDIRECT_URI")
-LINKEDIN_API_VERSION = os.getenv("LINKEDIN_API_VERSION", "20240201")
+LINKEDIN_CLIENT_ID = settings.linkedin_client_id
+LINKEDIN_CLIENT_SECRET = settings.linkedin_client_secret
+LINKEDIN_REDIRECT_URI = settings.linkedin_redirect_uri
+LINKEDIN_API_VERSION = settings.linkedin_api_version
 
 
 def x_configured() -> bool:

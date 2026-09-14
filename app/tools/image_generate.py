@@ -1,17 +1,14 @@
 # this is a file serving as an utils for generating image using diffrent image providers(gemini,openAI image2)
-import os
 from uuid import uuid1
 from google import genai
 from PIL import Image
 import base64
 import requests
-import os
-from dotenv import load_dotenv
-load_dotenv()
-WORKER_URL = "https://zubaimage.ibrahimalaaya7.workers.dev/"
-cloudflare_api = os.getenv("CLOUDFLARE_SCERET")
-api_key=os.getenv("GOOGLE_API_KEY")
-client = genai.Client(api_key=api_key)
+from app.core.config import settings
+
+WORKER_URL = settings.cloudflare_url
+cloudflare_api = settings.cloudflare_secret
+client = genai.Client(api_key=settings.require_google_api_key())
 
 
 
@@ -32,6 +29,8 @@ def generate_with_cloud(prompt:str):
     "Content-Type": "application/json",
 }
 
+    if not WORKER_URL or not cloudflare_api:
+        raise RuntimeError("CLOUDFLARE_SECRET and CLOUDFLARE_URL are required for Cloudflare image generation.")
     response = requests.post(
     WORKER_URL,
     headers=headers,

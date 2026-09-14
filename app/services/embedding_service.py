@@ -1,14 +1,13 @@
 import os
 
-from dotenv import load_dotenv
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-
-load_dotenv()
+from app.core.config import settings
 
 
 embeddings = GoogleGenerativeAIEmbeddings(
-    model="gemini-embedding-2"
+    model=settings.google_embedding_model,
+    google_api_key=settings.require_google_api_key(),
 )
 
 

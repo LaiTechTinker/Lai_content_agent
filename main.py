@@ -1,37 +1,39 @@
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
+from app.core.config import settings
 from app.db.database import init_db
 from app.api.routes import router as router1
 from app.api.content_review import router as router2
 from app.api.publish import router as router3
 
+logging.basicConfig(
+    level=logging.DEBUG if settings.debug else logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger("lai_agent")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("Starting up application...")
+    logger.info("Starting %s in %s environment", settings.app_name, settings.environment)
 
     init_db()
    
-    print("Application startup complete!")
+    logger.info("Application startup complete")
     yield
-    print("Shutting down application...")
-    print("Shutdown complete")
+    logger.info("Shutting down application")
 
-app = FastAPI(title="Lai_agent", description="my personal content agent", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, description="my personal content agent", version="1.0.0", lifespan=lifespan, debug=settings.debug)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:4173",
-        "http://127.0.0.1:4173",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_origins,
+    allow_credentials=settings.cors_allow_credentials,
+    allow_methods=settings.cors_methods,
+    allow_headers=settings.cors_headers,
 )
 
 app.include_router(router1, prefix="/api")

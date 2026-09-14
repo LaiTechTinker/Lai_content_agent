@@ -1,7 +1,9 @@
 import json
 import sqlite3
 
-DB_PATH = "content.db"
+from app.core.config import settings
+
+DB_PATH = settings.database_path
 
 
 def _initialize_schema(connection: sqlite3.Connection):

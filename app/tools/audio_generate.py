@@ -1,13 +1,10 @@
 from google import genai
-import os
-from dotenv import load_dotenv
 from uuid import uuid4
 import wave
 import base64
-load_dotenv()
+from app.core.config import settings
 
-api_key=os.getenv("GOOGLE_API_KEY")
-client = genai.Client(api_key=api_key)
+client = genai.Client(api_key=settings.require_google_api_key())
 
 
 def wave_file(filename, pcm, channels=1, rate=24000, sample_width=2):
